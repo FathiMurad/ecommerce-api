@@ -5,18 +5,15 @@ import lombok.*;
 import org.hibernate.annotations.Comment;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Core product entity representing an item available for sale.
- * Supports optimistic concurrency control to prevent stock overselling.
+ * Supports optimistic concurrency control and multiple product images.
  */
 @Entity
-@Table(
-        name = "products",
-        indexes = {
-                @Index(name = "idx_product_category", columnList = "category_id")
-        }
-)
+@Table(name = "products", indexes = {@Index(name = "idx_product_category", columnList = "category_id")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,7 +23,6 @@ public class Product {
 
     public static final int NAME_MAX_LENGTH = 150;
     public static final int DESCRIPTION_MAX_LENGTH = 2000;
-    public static final int IMAGE_URL_MAX_LENGTH = 500;
     public static final int PRICE_PRECISION = 10;
     public static final int PRICE_SCALE = 2;
 
@@ -40,10 +36,6 @@ public class Product {
     @Column(length = DESCRIPTION_MAX_LENGTH)
     @Comment("Detailed product description limited to 2000 characters to prevent resource exhaustion")
     private String description;
-
-    @Column(length = IMAGE_URL_MAX_LENGTH)
-    @Comment("Public URL pointing to the primary product image asset")
-    private String imageUrl;
 
     @Column(nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE)
     @Comment("Monetary unit stored as exact decimal to avoid floating-point rounding issues")
@@ -62,4 +54,24 @@ public class Product {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<ProductImage> images = new ArrayList<>();
+
+    /**
+     * Helper method to maintain bidirectional relationship consistency.
+     */
+    public void addImage(ProductImage image) {
+        images.add(image);
+        image.setProduct(this);
+    }
+
+    /**
+     * Helper method to safely remove an image from the product.
+     */
+    public void removeImage(ProductImage image) {
+        images.remove(image);
+        image.setProduct(null);
+    }
 }
