@@ -1,5 +1,6 @@
 package com.ecommerce.api.controller;
 
+import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.dto.response.ProductResponse;
 import com.ecommerce.api.service.ProductService;
 import lombok.RequiredArgsConstructor;
@@ -7,9 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 /**
  * REST controller exposing endpoints for product catalog operations.
@@ -22,8 +22,8 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    public ResponseEntity<List<ProductResponse>> getAllProducts() {
-        List<ProductResponse> products = productService.getAllProducts();
+    public ResponseEntity<PagedResponse<ProductResponse>> getAllProducts(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size, @RequestParam(defaultValue = "id") String sortBy, @RequestParam(defaultValue = "asc") String sortDirection) {
+        PagedResponse<ProductResponse> products = productService.getAllProducts(page, size, sortBy, sortDirection);
         return ResponseEntity.ok(products);
     }
 
@@ -34,8 +34,8 @@ public class ProductController {
     }
 
     @GetMapping("/category/{categoryId}")
-    public ResponseEntity<List<ProductResponse>> getProductsByCategoryId(@PathVariable Long categoryId) {
-        List<ProductResponse> products = productService.getProductsByCategoryId(categoryId);
+    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(@PathVariable Long categoryId, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size, @RequestParam(defaultValue = "id") String sortBy, @RequestParam(defaultValue = "asc") String sortDirection) {
+        PagedResponse<ProductResponse> products = productService.getProductsByCategoryId(categoryId, page, size, sortBy, sortDirection);
         return ResponseEntity.ok(products);
     }
 }

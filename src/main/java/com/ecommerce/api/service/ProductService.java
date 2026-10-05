@@ -1,8 +1,7 @@
 package com.ecommerce.api.service;
 
+import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.dto.response.ProductResponse;
-
-import java.util.List;
 
 /**
  * Service contract for product catalog operations.
@@ -10,25 +9,17 @@ import java.util.List;
 public interface ProductService {
 
     /**
-     * Retrieves all products in the catalog.
-     *
-     * @return List of ProductResponse DTOs.
+     * Retrieves a paginated and sorted page of products.
      */
-    List<ProductResponse> getAllProducts();
+    PagedResponse<ProductResponse> getAllProducts(int page, int size, String sortBy, String sortDirection);
 
     /**
      * Retrieves a single product by its primary key alongside all associated images.
-     *
-     * @param id The product identifier.
-     * @return The ProductResponse DTO.
      */
     ProductResponse getProductById(Long id);
 
     /**
-     * Retrieves all products belonging to a given category.
-     *
-     * @param categoryId The category identifier.
-     * @return List of ProductResponse DTOs.
+     * Retrieves a paginated and sorted page of products belonging to a given category.
      */
-    List<ProductResponse> getProductsByCategoryId(Long categoryId);
+    PagedResponse<ProductResponse> getProductsByCategoryId(Long categoryId, int page, int size, String sortBy, String sortDirection);
 }
