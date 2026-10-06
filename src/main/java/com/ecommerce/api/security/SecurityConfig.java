@@ -8,6 +8,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -20,48 +21,41 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Security configuration class managing HTTP security filter chain,
- * route access rules, session policies, and authentication providers.
+ * role-based route rules, session policies, and method-level security.
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
 
-    /**
-     * Configures the main security filter chain and authorization rules.
-     *
-     * @param http the HttpSecurity to configure
-     * @return the built SecurityFilterChain instance
-     * @throws Exception if a security configuration error occurs
-     */
     @Bean
     public SecurityFilterChain filterChainSetup(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable).authorizeHttpRequests(authz -> authz
-                // Public endpoints (OpenAPI / Swagger documentation)
+                // Swagger & OpenAPI documentation
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
-                // Public endpoints (Authentication & Registration)
+                // Authentication endpoints
                 .requestMatchers("/api/auth/**").permitAll()
 
-                // Allow Spring Boot error dispatching without requiring authentication
+                // Error dispatch
                 .requestMatchers("/error").permitAll()
 
-                // Public endpoints (Catalog read-only browsing)
+                // Public catalog browsing
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll().requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
 
-                // All other endpoints require authentication (e.g., Cart, Checkout, Orders)
+                // Admin catalog management endpoints
+                .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/categories/**").hasRole("ADMIN")
+
+                // All remaining endpoints require authenticated user
                 .anyRequest().authenticated()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    /**
-     * Configures the Data Access Object (DAO) authentication provider
-     * using the injected UserDetailsService and password encoder.
-     */
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
@@ -69,17 +63,11 @@ public class SecurityConfig {
         return provider;
     }
 
-    /**
-     * Exposes the AuthenticationManager bean from AuthenticationConfiguration.
-     */
     @Bean
     public AuthenticationManager authManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 
-    /**
-     * Password encoder bean utilizing BCrypt hashing algorithm.
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
