@@ -3,11 +3,14 @@ package com.ecommerce.api.entity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
@@ -25,9 +28,10 @@ import java.util.List;
 
 /**
  * Entity representing a shopping cart containing multiple cart items.
+ * Can be associated with an authenticated User or exist anonymously via cartToken.
  */
 @Entity
-@Table(name = "carts", indexes = {@Index(name = "idx_cart_token", columnList = "cart_token", unique = true)})
+@Table(name = "carts", indexes = {@Index(name = "idx_cart_token", columnList = "cart_token", unique = true), @Index(name = "idx_cart_user_id", columnList = "user_id")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -41,6 +45,13 @@ public class Cart {
 
     @Column(name = "cart_token", nullable = false, unique = true, length = 64)
     private String cartToken;
+
+    /**
+     * The authenticated user owning this cart. Null for anonymous/guest sessions.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
