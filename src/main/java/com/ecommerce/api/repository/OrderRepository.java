@@ -25,4 +25,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByTrackingNumberWithItems(@Param("trackingNumber") String trackingNumber);
 
     Page<Order> findByCustomerEmail(String customerEmail, Pageable pageable);
+
+    Page<Order> findByUserId(Long userId, Pageable pageable);
 }

@@ -1,7 +1,6 @@
 package com.ecommerce.api.service.impl;
 
 import com.ecommerce.api.dto.request.CheckoutRequest;
-import com.ecommerce.api.dto.response.OrderItemResponse;
 import com.ecommerce.api.dto.response.OrderResponse;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.entity.Cart;
@@ -9,6 +8,7 @@ import com.ecommerce.api.entity.CartItem;
 import com.ecommerce.api.entity.Order;
 import com.ecommerce.api.entity.OrderItem;
 import com.ecommerce.api.entity.Product;
+import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
@@ -41,24 +41,33 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
 
     @Override
-    public OrderResponse checkout(String cartToken, CheckoutRequest request) {
-        if (cartToken == null || cartToken.trim().isEmpty()) {
-            throw new IllegalArgumentException("Cart token is required for checkout.");
-        }
+    public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
+        Cart cart = resolveCartForCheckout(user, cartToken);
 
-        Optional<Cart> cartOptional = cartRepository.findByCartTokenWithItems(cartToken);
-        if (cartOptional.isEmpty()) {
-            throw new ResourceNotFoundException("Cart not found with token: " + cartToken);
-        }
-
-        Cart cart = cartOptional.get();
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new EmptyCartException("Cannot checkout with an empty cart.");
         }
 
         String trackingNumber = "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        Order order = Order.builder().trackingNumber(trackingNumber).customerName(request.customerName()).customerEmail(request.customerEmail()).shippingAddress(request.shippingAddress()).status(OrderStatus.CONFIRMED).items(new ArrayList<>()).build();
+        // Resolve customer details from authenticated user or request payload
+        String customerEmail = (user != null && user.getEmail() != null) ? user.getEmail() : (request != null ? request.customerEmail() : null);
+
+        String customerName = (user != null) ? (user.getFirstName() + " " + user.getLastName()).trim() : (request != null ? request.customerName() : null);
+
+        String shippingAddress = request != null ? request.shippingAddress() : null;
+
+        if (customerEmail == null || customerEmail.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer email is required for checkout.");
+        }
+        if (customerName == null || customerName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer name is required for checkout.");
+        }
+        if (shippingAddress == null || shippingAddress.trim().isEmpty()) {
+            throw new IllegalArgumentException("Shipping address is required for checkout.");
+        }
+
+        Order order = Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.CONFIRMED).items(new ArrayList<>()).build();
 
         for (CartItem cartItem : cart.getItems()) {
             Product product = cartItem.getProduct();
@@ -105,5 +114,42 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null when fetching order history.");
+        }
+        Page<Order> orderPage = orderRepository.findByUserId(user.getId(), pageable);
+        List<OrderResponse> content = new ArrayList<>();
+
+        for (Order order : orderPage.getContent()) {
+            content.add(OrderResponse.fromEntity(order));
+        }
+
+        return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
+    }
+
+    /**
+     * Resolves the cart to checkout, prioritizing the authenticated user's cart.
+     */
+    private Cart resolveCartForCheckout(User user, String cartToken) {
+        if (user != null) {
+            Optional<Cart> userCart = cartRepository.findByUserIdWithItems(user.getId());
+            if (userCart.isPresent()) {
+                return userCart.get();
+            }
+        }
+
+        if (cartToken != null && !cartToken.trim().isEmpty()) {
+            Optional<Cart> tokenCart = cartRepository.findByCartTokenWithItems(cartToken);
+            if (tokenCart.isPresent()) {
+                return tokenCart.get();
+            }
+        }
+
+        throw new ResourceNotFoundException("No active shopping cart found for checkout.");
     }
 }

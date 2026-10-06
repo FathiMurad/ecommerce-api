@@ -6,10 +6,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
@@ -30,7 +33,7 @@ import java.util.List;
  * Entity representing an order placed by a customer.
  */
 @Entity
-@Table(name = "orders", indexes = {@Index(name = "idx_order_tracking_number", columnList = "tracking_number", unique = true), @Index(name = "idx_order_customer_email", columnList = "customer_email")})
+@Table(name = "orders", indexes = {@Index(name = "idx_order_tracking_number", columnList = "tracking_number", unique = true), @Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -44,6 +47,13 @@ public class Order {
 
     @Column(name = "tracking_number", nullable = false, unique = true, length = 64)
     private String trackingNumber;
+
+    /**
+     * Authenticated user owning this order. Nullable for guest checkouts.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 
     @Column(name = "customer_email", nullable = false, length = 150)
     private String customerEmail;
@@ -86,8 +96,6 @@ public class Order {
 
     /**
      * Calculates the order total from all line items.
-     *
-     * @return Total amount as BigDecimal.
      */
     public BigDecimal calculateTotalAmount() {
         BigDecimal total = BigDecimal.ZERO;
