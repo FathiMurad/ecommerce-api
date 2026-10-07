@@ -50,6 +50,9 @@ public class SecurityConfig {
                 // Admin catalog management endpoints
                 .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/categories/**").hasRole("ADMIN")
 
+                // Cart, Orders & Payments require authenticated user
+                .requestMatchers("/api/cart/**").authenticated().requestMatchers("/api/orders/**").authenticated().requestMatchers("/api/payments/**").authenticated()
+
                 // All remaining endpoints require authenticated user
                 .anyRequest().authenticated()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
