@@ -1,8 +1,11 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.dto.request.ProductRequest;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.dto.response.ProductResponse;
+import com.ecommerce.api.entity.Category;
 import com.ecommerce.api.entity.Product;
+import com.ecommerce.api.entity.ProductImage;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.CategoryRepository;
 import com.ecommerce.api.repository.ProductRepository;
@@ -73,6 +76,40 @@ public class ProductServiceImpl implements ProductService {
         }
 
         return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
+    }
+
+    @Override
+    @Transactional
+    public ProductResponse createProduct(ProductRequest request) {
+        Category category = categoryRepository.findById(request.getCategoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+
+        Product product = Product.builder().name(request.getName().trim()).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
+
+        if (request.getImageUrls() != null && !request.getImageUrls().isEmpty()) {
+            for (int i = 0; i < request.getImageUrls().size(); i++) {
+                product.addImage(ProductImage.builder().imageUrl(request.getImageUrls().get(i)).isPrimary(i == 0).displayOrder(i).build());
+            }
+        }
+
+        Product savedProduct = productRepository.save(product);
+        return ProductResponse.fromEntity(savedProduct);
+    }
+
+    @Override
+    @Transactional
+    public ProductResponse updateProduct(Long id, ProductRequest request) {
+        Product product = productRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
+
+        Category category = categoryRepository.findById(request.getCategoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+
+        product.setName(request.getName().trim());
+        product.setDescription(request.getDescription());
+        product.setPrice(request.getPrice());
+        product.setStockQuantity(request.getStockQuantity());
+        product.setCategory(category);
+
+        Product updatedProduct = productRepository.save(product);
+        return ProductResponse.fromEntity(updatedProduct);
     }
 
     @Override
