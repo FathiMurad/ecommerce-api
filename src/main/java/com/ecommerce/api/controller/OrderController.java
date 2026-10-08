@@ -1,6 +1,7 @@
 package com.ecommerce.api.controller;
 
 import com.ecommerce.api.dto.request.CheckoutRequest;
+import com.ecommerce.api.dto.request.UpdateOrderStatusRequest;
 import com.ecommerce.api.dto.response.OrderResponse;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.entity.User;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller exposing endpoints for order placement, order history, and tracking.
+ * REST controller exposing endpoints for order placement, lifecycle management, and history.
  * Supports both authenticated users via JWT and guest checkouts.
  */
 @RestController
@@ -52,6 +54,15 @@ public class OrderController {
         User user = extractUser(securityUser);
         PagedResponse<OrderResponse> orders = orderService.getMyOrders(user, pageable);
         return ResponseEntity.ok(orders);
+    }
+
+    /**
+     * Administratively updates the lifecycle status of an order.
+     */
+    @PatchMapping("/{trackingNumber}/status")
+    public ResponseEntity<OrderResponse> updateOrderStatus(@PathVariable String trackingNumber, @Valid @RequestBody UpdateOrderStatusRequest request) {
+        OrderResponse updatedOrder = orderService.updateOrderStatus(trackingNumber, request.getStatus());
+        return ResponseEntity.ok(updatedOrder);
     }
 
     /**

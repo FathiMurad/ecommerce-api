@@ -10,6 +10,7 @@ import com.ecommerce.api.entity.OrderItem;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.OrderStatus;
+import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
@@ -29,7 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implementation of OrderService providing atomic checkout execution and order management.
+ * Implementation of OrderService providing atomic checkout execution and order lifecycle management.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,9 +53,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Resolve customer details from authenticated user or request payload
         String customerEmail = (user != null && user.getEmail() != null) ? user.getEmail() : (request != null ? request.customerEmail() : null);
-
         String customerName = (user != null) ? (user.getFirstName() + " " + user.getLastName()).trim() : (request != null ? request.customerName() : null);
-
         String shippingAddress = request != null ? request.shippingAddress() : null;
 
         if (customerEmail == null || customerEmail.trim().isEmpty()) {
@@ -130,6 +129,55 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
+    }
+
+    @Override
+    public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
+        Order order = orderRepository.findByTrackingNumberWithItems(trackingNumber).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
+
+        OrderStatus currentStatus = order.getStatus();
+
+        // 1. Validation: No action needed if status is unchanged
+        if (currentStatus == newStatus) {
+            return OrderResponse.fromEntity(order);
+        }
+
+        // 2. Validation: Terminal states cannot transition
+        if (currentStatus == OrderStatus.DELIVERED || currentStatus == OrderStatus.CANCELLED) {
+            throw new BadRequestException("Cannot modify an order already in terminal status: " + currentStatus);
+        }
+
+        // 3. State Machine transitions
+        switch (newStatus) {
+            case CONFIRMED -> {
+                if (currentStatus != OrderStatus.PENDING) {
+                    throw new BadRequestException("Only PENDING orders can be moved to CONFIRMED");
+                }
+            }
+            case SHIPPED -> {
+                if (currentStatus != OrderStatus.CONFIRMED) {
+                    throw new BadRequestException("Only CONFIRMED orders can be dispatched to SHIPPED");
+                }
+            }
+            case DELIVERED -> {
+                if (currentStatus != OrderStatus.SHIPPED) {
+                    throw new BadRequestException("Only SHIPPED orders can be marked as DELIVERED");
+                }
+            }
+            case CANCELLED -> {
+                // Return stock back to inventory if order is cancelled
+                for (OrderItem item : order.getItems()) {
+                    Product product = item.getProduct();
+                    product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+                    productRepository.save(product);
+                }
+            }
+            default -> throw new BadRequestException("Unsupported status transition to: " + newStatus);
+        }
+
+        order.setStatus(newStatus);
+        Order updatedOrder = orderRepository.save(order);
+        return OrderResponse.fromEntity(updatedOrder);
     }
 
     /**

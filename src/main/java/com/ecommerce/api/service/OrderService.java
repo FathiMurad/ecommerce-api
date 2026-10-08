@@ -4,10 +4,11 @@ import com.ecommerce.api.dto.request.CheckoutRequest;
 import com.ecommerce.api.dto.response.OrderResponse;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.entity.User;
+import com.ecommerce.api.entity.enums.OrderStatus;
 import org.springframework.data.domain.Pageable;
 
 /**
- * Service contract defining order placement and order retrieval operations.
+ * Service contract defining order placement, lifecycle transitions, and retrieval operations.
  */
 public interface OrderService {
 
@@ -39,4 +40,13 @@ public interface OrderService {
      * Retrieves paged order history for an authenticated user.
      */
     PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable);
+
+    /**
+     * Administratively updates the lifecycle status of an order enforcing state machine rules.
+     *
+     * @param trackingNumber The unique order tracking identifier.
+     * @param newStatus      Target lifecycle status.
+     * @return Updated OrderResponse details.
+     */
+    OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus);
 }
