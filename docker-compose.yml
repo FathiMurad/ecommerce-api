@@ -4,15 +4,15 @@ services:
     container_name: ecommerce-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ecommerce_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: ${DB_NAME:?Database name is required}
+      POSTGRES_USER: ${DB_USERNAME:?Database username is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Database password is required}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ecommerce_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,11 +28,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ecommerce_db
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgrespassword
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:?Database name is required}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:?Database username is required}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Database password is required}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_SHOW_SQL: "false"
+      APP_INIT_ADMIN_EMAIL: ${ADMIN_EMAIL:?Admin email is required}
+      APP_INIT_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin initial password is required}
+      APP_INIT_CUSTOMER_EMAIL: ${CUSTOMER_EMAIL:?Customer email is required}
+      APP_INIT_CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:?Customer initial password is required}
     depends_on:
       postgres:
         condition: service_healthy
