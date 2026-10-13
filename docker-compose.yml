@@ -37,6 +37,7 @@ services:
       APP_INIT_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin initial password is required}
       APP_INIT_CUSTOMER_EMAIL: ${CUSTOMER_EMAIL:?Customer email is required}
       APP_INIT_CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:?Customer initial password is required}
+      APP_SECURITY_PEPPER: ${SECURITY_PEPPER:?Security pepper key is required}
     depends_on:
       postgres:
         condition: service_healthy
