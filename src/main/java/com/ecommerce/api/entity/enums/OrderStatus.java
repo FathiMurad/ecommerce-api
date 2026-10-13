@@ -20,7 +20,7 @@ public enum OrderStatus {
             return null;
         }
 
-        String normalized = value.trim().toUpperCase().replace("-", "_").replace(" ", "_");
+        String normalized = value.trim().toUpperCase();
 
         for (OrderStatus status : values()) {
             if (status.name().equals(normalized)) {
