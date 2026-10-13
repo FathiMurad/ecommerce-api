@@ -45,7 +45,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         // Note: Make sure the Role enum matches your actual enum values (e.g., CUSTOMER or USER)
         user.setRole(com.ecommerce.api.entity.enums.Role.ROLE_CUSTOMER);
-        user.setIsActive(true);
+        user.setActive(true);
 
         userRepository.save(user);
 
