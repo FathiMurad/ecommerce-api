@@ -1,6 +1,9 @@
 package com.ecommerce.api.dto.request;
 
+import com.ecommerce.api.constant.MoneyConstants;
+import com.ecommerce.api.entity.Product;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -23,14 +26,15 @@ import java.util.List;
 public class ProductRequest {
 
     @NotBlank(message = "Product name is mandatory")
-    @Size(max = 200, message = "Product name must not exceed 200 characters")
+    @Size(max = Product.NAME_MAX_LENGTH, message = "Product name must not exceed {max} characters")
     private String name;
 
-    @Size(max = 2000, message = "Description must not exceed 2000 characters")
+    @Size(max = Product.DESCRIPTION_MAX_LENGTH, message = "Description must not exceed {max} characters")
     private String description;
 
     @NotNull(message = "Price is mandatory")
     @DecimalMin(value = "0.01", message = "Price must be strictly positive")
+    @Digits(integer = MoneyConstants.PRECISION - MoneyConstants.SCALE, fraction = MoneyConstants.SCALE, message = "Price cannot exceed 10 integer digits and 2 decimal places")
     private BigDecimal price;
 
     @NotNull(message = "Stock quantity is mandatory")
