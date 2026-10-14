@@ -20,7 +20,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * Fetches a product alongside all associated images in a single SQL query
      * to eliminate N+1 lazy-loading performance overhead.
      */
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.images WHERE p.id = :id")
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.images WHERE p.id = :id")
     Optional<Product> findByIdWithImages(@Param("id") Long id);
 
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
