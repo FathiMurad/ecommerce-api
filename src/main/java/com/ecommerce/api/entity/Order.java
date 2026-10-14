@@ -1,5 +1,6 @@
 package com.ecommerce.api.entity;
 
+import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -41,11 +42,17 @@ import java.util.List;
 @Builder
 public class Order {
 
+    public static final int TRACKING_NUMBER_MAX_LENGTH = 64;
+    public static final int CUSTOMER_EMAIL_MAX_LENGTH = 150;
+    public static final int CUSTOMER_NAME_MAX_LENGTH = 100;
+    public static final int SHIPPING_ADDRESS_MAX_LENGTH = 255;
+    public static final int STATUS_MAX_LENGTH = 30;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tracking_number", nullable = false, unique = true, length = 64)
+    @Column(name = "tracking_number", nullable = false, unique = true, length = TRACKING_NUMBER_MAX_LENGTH)
     private String trackingNumber;
 
     /**
@@ -55,20 +62,20 @@ public class Order {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @Column(name = "customer_email", nullable = false, length = 150)
+    @Column(name = "customer_email", nullable = false, length = CUSTOMER_EMAIL_MAX_LENGTH)
     private String customerEmail;
 
-    @Column(name = "customer_name", nullable = false, length = 100)
+    @Column(name = "customer_name", nullable = false, length = CUSTOMER_NAME_MAX_LENGTH)
     private String customerName;
 
-    @Column(name = "shipping_address", nullable = false, length = 255)
+    @Column(name = "shipping_address", nullable = false, length = SHIPPING_ADDRESS_MAX_LENGTH)
     private String shippingAddress;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = STATUS_MAX_LENGTH)
     private OrderStatus status;
 
-    @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
+    @Column(name = "total_amount", nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
     private BigDecimal totalAmount;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

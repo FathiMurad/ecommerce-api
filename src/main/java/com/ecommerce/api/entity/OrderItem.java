@@ -1,5 +1,6 @@
 package com.ecommerce.api.entity;
 
+import com.ecommerce.api.constant.MoneyConstants;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -46,7 +47,7 @@ public class OrderItem {
     @Column(nullable = false)
     private Integer quantity;
 
-    @Column(name = "price_at_purchase", nullable = false, precision = 12, scale = 2)
+    @Column(name = "price_at_purchase", nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
     private BigDecimal priceAtPurchase;
 
     @CreationTimestamp

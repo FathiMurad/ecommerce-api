@@ -39,11 +39,13 @@ import java.util.List;
 @Builder
 public class Cart {
 
+    public static final int CART_TOKEN_MAX_LENGTH = 64;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "cart_token", nullable = false, unique = true, length = 64)
+    @Column(name = "cart_token", nullable = false, unique = true, length = CART_TOKEN_MAX_LENGTH)
     private String cartToken;
 
     /**

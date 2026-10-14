@@ -1,7 +1,24 @@
 package com.ecommerce.api.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import com.ecommerce.api.constant.MoneyConstants;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.Comment;
 
 import java.math.BigDecimal;
@@ -23,8 +40,8 @@ public class Product {
 
     public static final int NAME_MAX_LENGTH = 150;
     public static final int DESCRIPTION_MAX_LENGTH = 2000;
-    public static final int PRICE_PRECISION = 10;
-    public static final int PRICE_SCALE = 2;
+    public static final int PRICE_PRECISION = MoneyConstants.PRECISION;
+    public static final int PRICE_SCALE = MoneyConstants.SCALE;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

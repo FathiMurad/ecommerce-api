@@ -30,24 +30,30 @@ import java.time.LocalDateTime;
 @Builder
 public class User {
 
+    public static final int EMAIL_MAX_LENGTH = 150;
+    public static final int PASSWORD_MAX_LENGTH = 255;
+    public static final int FIRST_NAME_MAX_LENGTH = 50;
+    public static final int LAST_NAME_MAX_LENGTH = 50;
+    public static final int ROLE_MAX_LENGTH = 30;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 150)
+    @Column(nullable = false, unique = true, length = EMAIL_MAX_LENGTH)
     private String email;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, length = PASSWORD_MAX_LENGTH)
     private String password;
 
-    @Column(name = "first_name", nullable = false, length = 50)
+    @Column(name = "first_name", nullable = false, length = FIRST_NAME_MAX_LENGTH)
     private String firstName;
 
-    @Column(name = "last_name", nullable = false, length = 50)
+    @Column(name = "last_name", nullable = false, length = LAST_NAME_MAX_LENGTH)
     private String lastName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = ROLE_MAX_LENGTH)
     private Role role;
 
     @Builder.Default

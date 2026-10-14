@@ -1,5 +1,6 @@
 package com.ecommerce.api.entity;
 
+import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.entity.enums.PaymentMethod;
 import com.ecommerce.api.entity.enums.PaymentStatus;
 import jakarta.persistence.Column;
@@ -36,6 +37,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class Payment {
 
+    public static final int TRANSACTION_ID_MAX_LENGTH = 100;
+    public static final int STATUS_MAX_LENGTH = 30;
+    public static final int PAYMENT_METHOD_MAX_LENGTH = 30;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -44,18 +49,18 @@ public class Payment {
     @JoinColumn(name = "order_id", nullable = false, unique = true)
     private Order order;
 
-    @Column(name = "transaction_id", nullable = false, unique = true, length = 100)
+    @Column(name = "transaction_id", nullable = false, unique = true, length = TRANSACTION_ID_MAX_LENGTH)
     private String transactionId;
 
-    @Column(nullable = false, precision = 12, scale = 2)
+    @Column(nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
     private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = STATUS_MAX_LENGTH)
     private PaymentStatus status;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method", nullable = false, length = 30)
+    @Column(name = "payment_method", nullable = false, length = PAYMENT_METHOD_MAX_LENGTH)
     private PaymentMethod paymentMethod;
 
     @Column(name = "failure_reason")
