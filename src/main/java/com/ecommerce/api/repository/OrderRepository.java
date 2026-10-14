@@ -18,10 +18,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByTrackingNumber(String trackingNumber);
 
-    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.id = :id")
+    @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.id = :id")
     Optional<Order> findByIdWithItems(@Param("id") Long id);
 
-    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.trackingNumber = :trackingNumber")
+    @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.trackingNumber = :trackingNumber")
     Optional<Order> findByTrackingNumberWithItems(@Param("trackingNumber") String trackingNumber);
 
     Page<Order> findByCustomerEmail(String customerEmail, Pageable pageable);
