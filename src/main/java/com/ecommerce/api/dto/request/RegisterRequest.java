@@ -1,5 +1,6 @@
 package com.ecommerce.api.dto.request;
 
+import com.ecommerce.api.entity.User;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -22,12 +23,14 @@ public class RegisterRequest {
      * The first name of the user.
      */
     @NotBlank(message = "First name is required")
+    @Size(max = User.FIRST_NAME_MAX_LENGTH, message = "First name must not exceed {max} characters")
     private String firstName;
 
     /**
      * The last name of the user.
      */
     @NotBlank(message = "Last name is required")
+    @Size(max = User.LAST_NAME_MAX_LENGTH, message = "Last name must not exceed {max} characters")
     private String lastName;
 
     /**
@@ -35,13 +38,13 @@ public class RegisterRequest {
      */
     @NotBlank(message = "Email is required")
     @Email(message = "Email format is not valid")
+    @Size(max = User.EMAIL_MAX_LENGTH, message = "Email must not exceed {max} characters")
     private String email;
 
     /**
      * The password for the new account.
-     * Must be at least 6 characters long to meet basic security requirements.
      */
     @NotBlank(message = "Password is required")
-    @Size(min = 6, message = "Password must be at least 6 characters long")
+    @Size(min = 6, max = User.PASSWORD_MAX_LENGTH, message = "Password must be between {min} and {max} characters")
     private String password;
 }
