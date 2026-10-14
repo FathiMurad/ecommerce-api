@@ -46,7 +46,7 @@ public class Category {
     @Column(length = DESCRIPTION_MAX_LENGTH)
     private String description;
 
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "category", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
     @Builder.Default
     private List<Product> products = new ArrayList<>();
 }
