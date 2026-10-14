@@ -43,7 +43,7 @@ public class ProductImage {
     @Column(nullable = false)
     @Comment("Indicates whether this image is the main display thumbnail for product listings")
     @Builder.Default
-    private Boolean isPrimary = false;
+    private boolean isPrimary = false;
 
     @Column(nullable = false)
     @Comment("Display sequence index for frontend carousel or thumbnail grid")
@@ -53,4 +53,18 @@ public class ProductImage {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    /**
+     * Backward-compatible getter alias for serialization and mapping layers.
+     */
+    public boolean getIsPrimary() {
+        return this.isPrimary;
+    }
+
+    /**
+     * Backward-compatible setter alias for mapping layers.
+     */
+    public void setIsPrimary(boolean isPrimary) {
+        this.isPrimary = isPrimary;
+    }
 }
