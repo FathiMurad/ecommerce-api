@@ -1,8 +1,10 @@
 package com.ecommerce.api.dto.request;
 
+import com.ecommerce.api.entity.Order;
 import com.ecommerce.api.entity.enums.PaymentMethod;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,6 +27,7 @@ public class PaymentRequest {
     @Pattern(regexp = "^[0-9]{16}$", message = "Card number must be exactly 16 digits")
     private String cardNumber;
 
+    @Size(max = Order.CUSTOMER_NAME_MAX_LENGTH, message = "Card holder name must not exceed {max} characters")
     private String cardHolderName;
 
     @Pattern(regexp = "^(0[1-9]|1[0-2])/[0-9]{2}$", message = "Expiry format must be MM/YY")
