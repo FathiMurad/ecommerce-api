@@ -1,7 +1,9 @@
 package com.ecommerce.api.dto.request;
 
+import com.ecommerce.api.entity.User;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,11 +24,13 @@ public class LoginRequest {
      */
     @NotBlank(message = "Email is required")
     @Email(message = "Email format is not valid")
+    @Size(max = User.EMAIL_MAX_LENGTH, message = "Email must not exceed {max} characters")
     private String email;
 
     /**
      * The raw password provided by the user for authentication.
      */
     @NotBlank(message = "Password is required")
+    @Size(max = User.PASSWORD_MAX_LENGTH, message = "Password must not exceed {max} characters")
     private String password;
 }
