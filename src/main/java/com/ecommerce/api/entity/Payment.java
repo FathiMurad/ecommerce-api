@@ -11,16 +11,18 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,7 +31,7 @@ import java.time.LocalDateTime;
  * Entity representing an individual payment transaction linked to an Order.
  */
 @Entity
-@Table(name = "payments")
+@Table(name = "payments", indexes = {@Index(name = "idx_payment_transaction_id", columnList = "transaction_id", unique = true), @Index(name = "idx_payment_order_id", columnList = "order_id", unique = true)})
 @Getter
 @Setter
 @Builder
@@ -40,6 +42,7 @@ public class Payment {
     public static final int TRANSACTION_ID_MAX_LENGTH = 100;
     public static final int STATUS_MAX_LENGTH = 30;
     public static final int PAYMENT_METHOD_MAX_LENGTH = 30;
+    public static final int FAILURE_REASON_MAX_LENGTH = 255;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,23 +66,17 @@ public class Payment {
     @Column(name = "payment_method", nullable = false, length = PAYMENT_METHOD_MAX_LENGTH)
     private PaymentMethod paymentMethod;
 
-    @Column(name = "failure_reason")
+    @Column(name = "failure_reason", length = FAILURE_REASON_MAX_LENGTH)
     private String failureReason;
 
+    @Version
+    private Integer version;
+
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
 }
