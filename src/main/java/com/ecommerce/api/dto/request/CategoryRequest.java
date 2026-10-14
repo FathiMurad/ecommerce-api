@@ -1,5 +1,6 @@
 package com.ecommerce.api.dto.request;
 
+import com.ecommerce.api.entity.Category;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -17,9 +18,9 @@ import lombok.NoArgsConstructor;
 public class CategoryRequest {
 
     @NotBlank(message = "Category name is mandatory")
-    @Size(max = 100, message = "Category name must not exceed 100 characters")
+    @Size(max = Category.NAME_MAX_LENGTH, message = "Category name must not exceed {max} characters")
     private String name;
 
-    @Size(max = 500, message = "Description must not exceed 500 characters")
+    @Size(max = Category.DESCRIPTION_MAX_LENGTH, message = "Description must not exceed {max} characters")
     private String description;
 }
