@@ -20,14 +20,22 @@ class PepperedPasswordEncoder implements PasswordEncoder {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private final PasswordEncoder delegate;
-    private final byte[] pepperKeyBytes;
+    private final SecretKeySpec secretKeySpec;
 
     PepperedPasswordEncoder(String pepperKey) {
+        this(pepperKey, new BCryptPasswordEncoder());
+    }
+
+    PepperedPasswordEncoder(String pepperKey, PasswordEncoder delegate) {
         if (pepperKey == null || pepperKey.trim().length() < 32) {
             throw new IllegalArgumentException("Pepper secret key must be at least 32 characters long for enterprise security.");
         }
-        this.delegate = new BCryptPasswordEncoder();
-        this.pepperKeyBytes = pepperKey.getBytes(StandardCharsets.UTF_8);
+        if (delegate == null) {
+            throw new IllegalArgumentException("Delegate PasswordEncoder cannot be null.");
+        }
+        this.delegate = delegate;
+        byte[] keyBytes = pepperKey.getBytes(StandardCharsets.UTF_8);
+        this.secretKeySpec = new SecretKeySpec(keyBytes, HMAC_ALGORITHM);
     }
 
     @Override
@@ -51,15 +59,19 @@ class PepperedPasswordEncoder implements PasswordEncoder {
         return delegate.matches(peppered, encodedPassword);
     }
 
+    @Override
+    public boolean upgradeEncoding(String encodedPassword) {
+        return delegate.upgradeEncoding(encodedPassword);
+    }
+
     /**
-     * Computes HMAC-SHA256 of the raw password using the pepper key.
-     * Generates a constant-length 32-byte digest represented as Base64 string.
+     * Computes HMAC-SHA256 of the raw password using the pre-initialized secret key specification.
+     * Generates a fixed 32-byte digest represented as a Base64 string.
      */
     private String applyHmac(CharSequence rawPassword) {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            SecretKeySpec keySpec = new SecretKeySpec(pepperKeyBytes, HMAC_ALGORITHM);
-            mac.init(keySpec);
+            mac.init(secretKeySpec);
             byte[] rawHmac = mac.doFinal(rawPassword.toString().getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(rawHmac);
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
