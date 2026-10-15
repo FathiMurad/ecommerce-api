@@ -8,6 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -18,10 +19,15 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 /**
  * Security configuration class managing HTTP security filter chain,
- * role-based route rules, session policies, and method-level security.
+ * CORS policies, role-based route rules, session policies, and method-level security.
  */
 @Configuration
 @EnableWebSecurity
@@ -37,11 +43,14 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChainSetup(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable).authorizeHttpRequests(authz -> authz
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource())).csrf(AbstractHttpConfigurer::disable).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authorizeHttpRequests(authz -> authz
+                // Preflight requests
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                 // Swagger & OpenAPI documentation
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
-                // Static assets (product images catalog)
+                // Static catalog image assets
                 .requestMatchers("/images/**").permitAll()
 
                 // Authentication endpoints
@@ -51,21 +60,42 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
 
                 // Public catalog browsing
-                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll().requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**").permitAll()
 
-                // Admin catalog management endpoints
+                // Administrative catalog management
                 .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/categories/**").hasRole("ADMIN")
 
-                // Admin order status management endpoint (PATCH)
+                // Administrative order status management (PATCH)
                 .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasRole("ADMIN")
 
-                // Cart, Orders & Payments require authenticated user
-                .requestMatchers("/api/cart/**").authenticated().requestMatchers("/api/orders/**").authenticated().requestMatchers("/api/payments/**").authenticated()
+                // Shopping Cart (supports authenticated users & anonymous guest sessions via X-Cart-Token)
+                .requestMatchers("/api/cart/**").permitAll()
 
-                // All remaining endpoints require authenticated user
-                .anyRequest().authenticated()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                // Order placement & tracking (Checkout & tracking by number allow guests; my-orders requires auth)
+                .requestMatchers(HttpMethod.POST, "/api/orders/checkout").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/my-orders").authenticated().requestMatchers(HttpMethod.GET, "/api/orders/*").permitAll()
+
+                // Customer & Guest payment settlement
+                .requestMatchers(HttpMethod.POST, "/api/payments/**").permitAll()
+
+                // All remaining routes require authentication
+                .anyRequest().authenticated()).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Token", "Accept", "Origin"));
+        configuration.setExposedHeaders(List.of("Authorization", "X-Cart-Token"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean
