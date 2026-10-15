@@ -31,7 +31,7 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-class DataSeeder implements CommandLineRunner {
+public class DataSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
@@ -39,16 +39,16 @@ class DataSeeder implements CommandLineRunner {
     private final CartRepository cartRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.init.admin-email}")
+    @Value("${app.init.admin-email:admin@ecommerce.com}")
     private String adminEmail;
 
-    @Value("${app.init.admin-password}")
+    @Value("${app.init.admin-password:Admin123456!}")
     private String adminPassword;
 
-    @Value("${app.init.customer-email}")
+    @Value("${app.init.customer-email:customer@ecommerce.com}")
     private String customerEmail;
 
-    @Value("${app.init.customer-password}")
+    @Value("${app.init.customer-password:Customer123456!}")
     private String customerPassword;
 
     private static final String IMAGE_BASE_PATH = "/images/products/";
@@ -62,15 +62,28 @@ class DataSeeder implements CommandLineRunner {
 
     /**
      * Idempotently provisions or updates credentials for System Administrator and Default Customer.
+     * Evaluates existing password matches to prevent costly BCrypt re-hashing on every boot.
      */
     private void seedUsersAndCarts() {
         // 1. System Administrator
         userRepository.findByEmail(adminEmail).ifPresentOrElse(admin -> {
-            admin.setPassword(passwordEncoder.encode(adminPassword));
-            admin.setRole(Role.ROLE_ADMIN);
-            admin.setActive(true);
-            userRepository.save(admin);
-            log.info("Synchronized credentials for existing System Administrator ({})", adminEmail);
+            boolean updated = false;
+            if (!passwordEncoder.matches(adminPassword, admin.getPassword())) {
+                admin.setPassword(passwordEncoder.encode(adminPassword));
+                updated = true;
+            }
+            if (admin.getRole() != Role.ROLE_ADMIN) {
+                admin.setRole(Role.ROLE_ADMIN);
+                updated = true;
+            }
+            if (!Boolean.TRUE.equals(admin.isActive())) {
+                admin.setActive(true);
+                updated = true;
+            }
+            if (updated) {
+                userRepository.save(admin);
+                log.info("Synchronized credentials and role for existing System Administrator ({})", adminEmail);
+            }
         }, () -> {
             User admin = User.builder().firstName("System").lastName("Administrator").email(adminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
             admin = userRepository.save(admin);
@@ -82,11 +95,23 @@ class DataSeeder implements CommandLineRunner {
 
         // 2. Default Customer
         userRepository.findByEmail(customerEmail).ifPresentOrElse(customer -> {
-            customer.setPassword(passwordEncoder.encode(customerPassword));
-            customer.setRole(Role.ROLE_CUSTOMER);
-            customer.setActive(true);
-            userRepository.save(customer);
-            log.info("Synchronized credentials for existing Default Customer ({})", customerEmail);
+            boolean updated = false;
+            if (!passwordEncoder.matches(customerPassword, customer.getPassword())) {
+                customer.setPassword(passwordEncoder.encode(customerPassword));
+                updated = true;
+            }
+            if (customer.getRole() != Role.ROLE_CUSTOMER) {
+                customer.setRole(Role.ROLE_CUSTOMER);
+                updated = true;
+            }
+            if (!Boolean.TRUE.equals(customer.isActive())) {
+                customer.setActive(true);
+                updated = true;
+            }
+            if (updated) {
+                userRepository.save(customer);
+                log.info("Synchronized credentials and role for existing Default Customer ({})", customerEmail);
+            }
         }, () -> {
             User customer = User.builder().firstName("Default").lastName("Customer").email(customerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
             customer = userRepository.save(customer);
