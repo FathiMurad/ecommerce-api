@@ -25,8 +25,8 @@ import java.util.UUID;
 
 /**
  * Enterprise database seeder executing upon application startup.
- * Initializes default System Administrator & Default Customer accounts with provisioned shopping carts,
- * and populates a realistic supermarket catalog with localized static assets.
+ * Idempotently initializes and synchronizes System Administrator & Default Customer credentials,
+ * provisions default shopping carts, and populates the supermarket catalog.
  */
 @Component
 @RequiredArgsConstructor
@@ -61,31 +61,40 @@ class DataSeeder implements CommandLineRunner {
     }
 
     /**
-     * Seeds initial System Administrator and Default Customer accounts with active shopping carts if users do not exist.
+     * Idempotently provisions or updates credentials for System Administrator and Default Customer.
      */
     private void seedUsersAndCarts() {
-        if (userRepository.count() > 0) {
-            log.info("Users already initialized. Skipping user seeding.");
-            return;
-        }
-
-        log.info("Starting initial user and cart seeding...");
-
         // 1. System Administrator
-        User admin = User.builder().firstName("System").lastName("Administrator").email(adminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
-        admin = userRepository.save(admin);
+        userRepository.findByEmail(adminEmail).ifPresentOrElse(admin -> {
+            admin.setPassword(passwordEncoder.encode(adminPassword));
+            admin.setRole(Role.ROLE_ADMIN);
+            admin.setActive(true);
+            userRepository.save(admin);
+            log.info("Synchronized credentials for existing System Administrator ({})", adminEmail);
+        }, () -> {
+            User admin = User.builder().firstName("System").lastName("Administrator").email(adminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
+            admin = userRepository.save(admin);
 
-        Cart adminCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(admin).build();
-        cartRepository.save(adminCart);
+            Cart adminCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(admin).build();
+            cartRepository.save(adminCart);
+            log.info("Provisioned new System Administrator account ({})", adminEmail);
+        });
 
         // 2. Default Customer
-        User customer = User.builder().firstName("Default").lastName("Customer").email(customerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
-        customer = userRepository.save(customer);
+        userRepository.findByEmail(customerEmail).ifPresentOrElse(customer -> {
+            customer.setPassword(passwordEncoder.encode(customerPassword));
+            customer.setRole(Role.ROLE_CUSTOMER);
+            customer.setActive(true);
+            userRepository.save(customer);
+            log.info("Synchronized credentials for existing Default Customer ({})", customerEmail);
+        }, () -> {
+            User customer = User.builder().firstName("Default").lastName("Customer").email(customerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
+            customer = userRepository.save(customer);
 
-        Cart customerCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(customer).build();
-        cartRepository.save(customerCart);
-
-        log.info("Successfully provisioned System Administrator ({}) and Default Customer ({}) accounts.", adminEmail, customerEmail);
+            Cart customerCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(customer).build();
+            cartRepository.save(customerCart);
+            log.info("Provisioned new Default Customer account ({})", customerEmail);
+        });
     }
 
     /**
@@ -99,7 +108,6 @@ class DataSeeder implements CommandLineRunner {
 
         log.info("Starting comprehensive supermarket catalog seeding...");
 
-        // Departments
         Category dairy = Category.builder().name("Dairy & Eggs").description("Fresh milk, cheeses, butter, and farm eggs").build();
         Category produce = Category.builder().name("Fruits & Vegetables").description("Farm-fresh organic vegetables and seasonal fruits").build();
         Category meat = Category.builder().name("Meat & Poultry").description("Premium cuts of beef, fresh chicken, and lamb").build();
