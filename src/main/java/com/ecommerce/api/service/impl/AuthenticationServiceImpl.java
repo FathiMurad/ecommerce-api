@@ -5,11 +5,14 @@ import com.ecommerce.api.dto.request.RegisterRequest;
 import com.ecommerce.api.dto.response.AuthenticationResponse;
 import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.Role;
+import com.ecommerce.api.exception.BadRequestException;
+import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.UserRepository;
 import com.ecommerce.api.security.JwtService;
 import com.ecommerce.api.security.SecurityUser;
 import com.ecommerce.api.service.AuthenticationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Implementation of the AuthenticationService.
- * Handles the business logic for registering new users and authenticating existing ones.
+ * Handles the business logic for registering new users and authenticating existing ones
+ * with email normalization, existence checks, and account status enforcement.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthenticationServiceImpl implements AuthenticationService {
@@ -32,36 +37,54 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
-        // Prevent duplicate emails
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new IllegalArgumentException("Email is already in use");
+        if (request == null) {
+            throw new IllegalArgumentException("Register request cannot be null.");
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required for registration.");
         }
 
-        User user = new User();
-        user.setFirstName(request.getFirstName());
-        user.setLastName(request.getLastName());
-        user.setEmail(request.getEmail());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
 
-        // Note: Make sure the Role enum matches your actual enum values (e.g., CUSTOMER or USER)
-        user.setRole(com.ecommerce.api.entity.enums.Role.ROLE_CUSTOMER);
-        user.setActive(true);
+        // Prevent duplicate emails using lightweight SQL EXISTS
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new BadRequestException("Email is already in use: " + normalizedEmail);
+        }
 
-        userRepository.save(user);
+        User user = User.builder().firstName(request.getFirstName() != null ? request.getFirstName().trim() : null).lastName(request.getLastName() != null ? request.getLastName().trim() : null).email(normalizedEmail).password(passwordEncoder.encode(request.getPassword())).role(Role.ROLE_CUSTOMER).isActive(true).build();
 
-        SecurityUser securityUser = new SecurityUser(user);
+        User savedUser = userRepository.save(user);
+        log.info("Registered new user id={} with email={}", savedUser.getId(), savedUser.getEmail());
+
+        SecurityUser securityUser = new SecurityUser(savedUser);
         String jwtToken = jwtService.generateToken(securityUser);
 
         return new AuthenticationResponse(jwtToken);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AuthenticationResponse authenticate(LoginRequest request) {
-        // Authenticate the user credentials using Spring Security's AuthenticationManager
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
+        if (request == null) {
+            throw new IllegalArgumentException("Login request cannot be null.");
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required for login.");
+        }
 
-        // If execution reaches here, authentication was successful
-        User user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        // Authenticate credentials using Spring Security's AuthenticationManager
+        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
+
+        User user = userRepository.findByEmail(normalizedEmail).orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + normalizedEmail));
+
+        if (!user.isActive()) {
+            log.warn("Login attempt for deactivated user email={}", normalizedEmail);
+            throw new BadRequestException("User account is inactive. Please contact support.");
+        }
+
+        log.info("User authenticated successfully: email={}", normalizedEmail);
 
         SecurityUser securityUser = new SecurityUser(user);
         String jwtToken = jwtService.generateToken(securityUser);
