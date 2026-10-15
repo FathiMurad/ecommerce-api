@@ -8,7 +8,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -47,35 +46,38 @@ public class SecurityConfig {
                 // Preflight requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
+                // Spring Boot Actuator Health & Metrics
+                .requestMatchers("/actuator/**").permitAll()
+
                 // Swagger & OpenAPI documentation
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                 // Static catalog image assets
                 .requestMatchers("/images/**").permitAll()
 
-                // Authentication endpoints
-                .requestMatchers("/api/auth/**").permitAll()
+                // Authentication endpoints (both /api and /api/v1)
+                .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
 
                 // Error dispatch
                 .requestMatchers("/error").permitAll()
 
-                // Public catalog browsing
-                .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**").permitAll()
+                // Public catalog browsing (both /api and /api/v1)
+                .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").permitAll()
 
                 // Administrative catalog management
-                .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/categories/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN")
 
                 // Administrative order status management (PATCH)
-                .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/api/orders/**", "/api/v1/orders/**").hasRole("ADMIN")
 
                 // Shopping Cart (supports authenticated users & anonymous guest sessions via X-Cart-Token)
-                .requestMatchers("/api/cart/**").permitAll()
+                .requestMatchers("/api/cart/**", "/api/v1/cart/**").permitAll()
 
                 // Order placement & tracking (Checkout & tracking by number allow guests; my-orders requires auth)
-                .requestMatchers(HttpMethod.POST, "/api/orders/checkout").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/my-orders").authenticated().requestMatchers(HttpMethod.GET, "/api/orders/*").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/orders/checkout", "/api/v1/orders/checkout").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/my-orders", "/api/v1/orders/my-orders").authenticated().requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/v1/orders/*").permitAll()
 
                 // Customer & Guest payment settlement
-                .requestMatchers(HttpMethod.POST, "/api/payments/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/payments/**", "/api/v1/payments/**").permitAll()
 
                 // All remaining routes require authentication
                 .anyRequest().authenticated()).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
