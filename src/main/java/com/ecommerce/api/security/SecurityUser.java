@@ -8,10 +8,13 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
- * Spring Security user details adapter wrapping the application User entity.
+ * Spring Security user details adapter wrapping the application User entity,
+ * enforcing active account status and authoritative role mapping.
  */
 @Getter
 @RequiredArgsConstructor
@@ -21,6 +24,9 @@ public class SecurityUser implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        if (user.getRole() == null) {
+            return Collections.emptyList();
+        }
         String roleName = user.getRole().name();
         String authorityName = roleName.startsWith("ROLE_") ? roleName : "ROLE_" + roleName;
         return List.of(new SimpleGrantedAuthority(authorityName));
@@ -43,7 +49,7 @@ public class SecurityUser implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return isEnabled();
     }
 
     @Override
@@ -53,6 +59,19 @@ public class SecurityUser implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return Boolean.TRUE.equals(user.isActive());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SecurityUser that = (SecurityUser) o;
+        return Objects.equals(user.getId(), that.user.getId()) || Objects.equals(getUsername(), that.getUsername());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(user.getId(), getUsername());
     }
 }
