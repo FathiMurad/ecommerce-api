@@ -20,9 +20,14 @@ import java.util.Map;
 public class ErrorResponse {
 
     /**
-     * HTTP status code (e.g., 400, 401, 404).
+     * HTTP status code (e.g., 400, 401, 404, 409, 500).
      */
     private int status;
+
+    /**
+     * HTTP error reason phrase (e.g., "Bad Request", "Not Found", "Conflict").
+     */
+    private String error;
 
     /**
      * Human-readable summary of the error.
