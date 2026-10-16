@@ -1,5 +1,7 @@
 package com.ecommerce.api.security;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,11 +65,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);
                 }
             }
+        } catch (ExpiredJwtException ex) {
+            log.warn("JWT token has expired: {}", ex.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (JwtException ex) {
+            log.warn("JWT token validation failed: {}", ex.getMessage());
+            SecurityContextHolder.clearContext();
         } catch (UsernameNotFoundException ex) {
             log.warn("Authentication failed: User specified in JWT not found: {}", ex.getMessage());
             SecurityContextHolder.clearContext();
         } catch (Exception ex) {
-            log.debug("JWT authentication skipped due to invalid token: {}", ex.getMessage());
+            log.error("Unexpected error during JWT authentication processing: {}", ex.getMessage());
             SecurityContextHolder.clearContext();
         }
 
