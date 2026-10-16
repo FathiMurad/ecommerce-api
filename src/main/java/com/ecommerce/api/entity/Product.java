@@ -19,7 +19,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Comment;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -50,12 +49,10 @@ public class Product {
     @Column(nullable = false, length = NAME_MAX_LENGTH)
     private String name;
 
-    @Column(length = DESCRIPTION_MAX_LENGTH)
-    @Comment("Detailed product description limited to 2000 characters to prevent resource exhaustion")
+    @Column(length = DESCRIPTION_MAX_LENGTH, comment = "Detailed product description limited to 2000 characters to prevent resource exhaustion")
     private String description;
 
-    @Column(nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE)
-    @Comment("Monetary unit stored as exact decimal to avoid floating-point rounding issues")
+    @Column(nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE, comment = "Monetary unit stored as exact decimal to avoid floating-point rounding issues")
     private BigDecimal price;
 
     @Column(nullable = false)
