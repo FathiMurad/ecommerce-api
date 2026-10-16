@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.dto.request.PaymentRequest;
 import com.ecommerce.api.dto.response.PaymentResponse;
 import com.ecommerce.api.entity.Order;
@@ -22,6 +23,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.UUID;
 
 /**
@@ -52,9 +55,16 @@ public class PaymentServiceImpl implements PaymentService {
         // Ownership verification (registered customer can only pay their own order; admin can pay any)
         validateOrderAccess(order);
 
-        // State validation
-        if (order.getStatus() == OrderStatus.DELIVERED || order.getStatus() == OrderStatus.CANCELLED) {
+        // State validation: only PENDING orders can be charged
+        if (order.getStatus() != OrderStatus.PENDING) {
             throw new BadRequestException("Cannot process payment for an order with status: " + order.getStatus());
+        }
+
+        // Validate amount precision and equality via compareTo if supplied in request
+        if (request.getAmount() != null) {
+            if (request.getAmount().compareTo(order.getTotalAmount()) != 0) {
+                throw new BadRequestException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
+            }
         }
 
         // Idempotency check: Reuse existing record or verify not already completed
@@ -68,8 +78,10 @@ public class PaymentServiceImpl implements PaymentService {
         boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
         String transactionId = generateUniqueTransactionId();
 
+        BigDecimal chargeAmount = (request.getAmount() != null ? request.getAmount() : order.getTotalAmount()).setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP);
+
         payment.setTransactionId(transactionId);
-        payment.setAmount(order.getTotalAmount());
+        payment.setAmount(chargeAmount);
         payment.setPaymentMethod(request.getPaymentMethod());
 
         if (isDeclined) {

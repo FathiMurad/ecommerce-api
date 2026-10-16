@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.dto.request.CheckoutRequest;
 import com.ecommerce.api.dto.response.OrderResponse;
 import com.ecommerce.api.dto.response.PagedResponse;
@@ -25,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -68,7 +70,8 @@ public class OrderServiceImpl implements OrderService {
 
         String trackingNumber = generateUniqueTrackingNumber();
 
-        Order order = Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.CONFIRMED).items(new ArrayList<>()).build();
+        // New checkout order is created with PENDING status awaiting payment settlement
+        Order order = Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
 
         for (CartItem cartItem : cart.getItems()) {
             Long productId = cartItem.getProduct().getId();
@@ -86,13 +89,13 @@ public class OrderServiceImpl implements OrderService {
             order.addItem(orderItem);
         }
 
-        order.setTotalAmount(order.calculateTotalAmount());
+        order.setTotalAmount(order.calculateTotalAmount().setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP));
         Order savedOrder = orderRepository.save(order);
 
         cart.clear();
         cartRepository.save(cart);
 
-        log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}", savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getTotalAmount());
+        log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getTotalAmount(), savedOrder.getStatus());
 
         return OrderResponse.fromEntity(savedOrder);
     }
@@ -194,10 +197,6 @@ public class OrderServiceImpl implements OrderService {
         return OrderResponse.fromEntity(updatedOrder);
     }
 
-    /**
-     * Resolves the cart to checkout, prioritizing the authenticated user's cart
-     * while preventing IDOR and unauthorized cart hijacking.
-     */
     private Cart resolveCartForCheckout(User user, String cartToken) {
         if (user != null) {
             Optional<Cart> userCart = cartRepository.findByUserIdWithItems(user.getId());
