@@ -15,7 +15,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Comment;
 
 /**
  * Represents a single image asset associated with a product.
@@ -36,17 +35,14 @@ public class ProductImage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = IMAGE_URL_MAX_LENGTH)
-    @Comment("Direct URL pointing to the image asset stored in object storage (e.g., S3/CDN)")
+    @Column(nullable = false, length = IMAGE_URL_MAX_LENGTH, comment = "Direct URL pointing to the image asset stored in object storage (e.g., S3/CDN)")
     private String imageUrl;
 
-    @Column(nullable = false)
-    @Comment("Indicates whether this image is the main display thumbnail for product listings")
+    @Column(nullable = false, comment = "Indicates whether this image is the main display thumbnail for product listings")
     @Builder.Default
     private boolean isPrimary = false;
 
-    @Column(nullable = false)
-    @Comment("Display sequence index for frontend carousel or thumbnail grid")
+    @Column(nullable = false, comment = "Display sequence index for frontend carousel or thumbnail grid")
     @Builder.Default
     private Integer displayOrder = 0;
 
