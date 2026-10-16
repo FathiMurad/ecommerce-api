@@ -14,7 +14,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Comment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,8 +38,7 @@ public class Category {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = NAME_MAX_LENGTH)
-    @Comment("Unique human-readable category name")
+    @Column(nullable = false, unique = true, length = NAME_MAX_LENGTH, comment = "Unique human-readable category name")
     private String name;
 
     @Column(length = DESCRIPTION_MAX_LENGTH)
