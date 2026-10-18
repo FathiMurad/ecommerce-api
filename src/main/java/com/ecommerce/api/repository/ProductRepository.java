@@ -2,8 +2,10 @@ package com.ecommerce.api.repository;
 
 import com.ecommerce.api.entity.Product;
 import jakarta.persistence.LockModeType;
+import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -17,6 +19,14 @@ import java.util.Optional;
  */
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
+
+    @Override
+    @NonNull
+    @EntityGraph(attributePaths = {"category"})
+    Page<Product> findAll(@NonNull Pageable pageable);
+
+    @EntityGraph(attributePaths = {"category"})
+    Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 
     /**
      * Fetches a product alongside all associated images in a single SQL query
@@ -32,6 +42,4 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Product p WHERE p.id = :id")
     Optional<Product> findByIdWithPessimisticLock(@Param("id") Long id);
-
-    Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 }

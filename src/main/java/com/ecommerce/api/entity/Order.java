@@ -22,6 +22,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -34,7 +35,7 @@ import java.util.List;
  * Entity representing an order placed by a customer.
  */
 @Entity
-@Table(name = "orders", indexes = {@Index(name = "idx_order_tracking_number", columnList = "tracking_number", unique = true), @Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id")})
+@Table(name = "orders", indexes = {@Index(name = "idx_order_tracking_number", columnList = "tracking_number", unique = true), @Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id"), @Index(name = "idx_order_status", columnList = "status")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -68,7 +69,7 @@ public class Order {
     @Column(name = "customer_name", nullable = false, length = CUSTOMER_NAME_MAX_LENGTH)
     private String customerName;
 
-    @Column(name = "shipping_address", nullable = false, length = SHIPPING_ADDRESS_MAX_LENGTH)
+    @Column(name = "shipping_address", nullable = false)
     private String shippingAddress;
 
     @Enumerated(EnumType.STRING)
@@ -78,6 +79,7 @@ public class Order {
     @Column(name = "total_amount", nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
     private BigDecimal totalAmount;
 
+    @BatchSize(size = 50)
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();
