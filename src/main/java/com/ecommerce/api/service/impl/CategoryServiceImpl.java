@@ -9,6 +9,9 @@ import com.ecommerce.api.repository.CategoryRepository;
 import com.ecommerce.api.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +30,13 @@ public class CategoryServiceImpl implements CategoryService {
     private final CategoryRepository categoryRepository;
 
     @Override
+    @Cacheable(value = "categories", key = "'all'")
     public List<CategoryResponse> getAllCategories() {
         return categoryRepository.findAll().stream().map(CategoryResponse::fromEntity).toList();
     }
 
     @Override
+    @Cacheable(value = "categories", key = "#id")
     public CategoryResponse getCategoryById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
@@ -41,6 +46,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "categories", allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
         if (request == null || request.getName() == null || request.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("Category name is required.");
@@ -61,6 +67,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @Caching(evict = {@CacheEvict(value = "categories", allEntries = true), @CacheEvict(value = "products", allEntries = true)})
     public CategoryResponse updateCategory(Long id, CategoryRequest request) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
@@ -89,6 +96,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
+    @Caching(evict = {@CacheEvict(value = "categories", allEntries = true), @CacheEvict(value = "products", allEntries = true)})
     public void deleteCategory(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");

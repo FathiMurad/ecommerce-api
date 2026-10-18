@@ -12,6 +12,8 @@ import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -50,6 +52,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = "products", key = "#id")
     public ProductResponse getProductById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -107,6 +110,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "products", key = "#id")
     public ProductResponse updateProduct(Long id, ProductRequest request) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -146,6 +150,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "products", key = "#id")
     public void deleteProduct(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
