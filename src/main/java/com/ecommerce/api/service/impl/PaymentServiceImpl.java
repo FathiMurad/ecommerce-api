@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -116,9 +118,12 @@ public class PaymentServiceImpl implements PaymentService {
         if (order.getItems() == null) {
             return;
         }
-        for (OrderItem item : order.getItems()) {
+
+        List<OrderItem> sortedItems = order.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
+
+        for (OrderItem item : sortedItems) {
             Long productId = item.getProduct().getId();
-            Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+            Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
         }
@@ -135,9 +140,10 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             String currentUserEmail = authentication.getName();
-            boolean isAdmin = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            boolean isAdmin = authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
 
-            if (!isAdmin && !order.getUser().getEmail().equalsIgnoreCase(currentUserEmail)) {
+            if (!isAdmin && !currentUserEmail.equalsIgnoreCase(order.getUser().getEmail())) {
                 throw new AccessDeniedException("You are not authorized to pay for this order.");
             }
         }

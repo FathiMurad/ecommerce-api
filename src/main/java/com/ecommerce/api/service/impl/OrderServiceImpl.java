@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,7 +57,7 @@ public class OrderServiceImpl implements OrderService {
 
         String customerEmail = resolveCustomerEmail(user, request);
         String customerName = resolveCustomerName(user, request);
-        String shippingAddress = (request != null && request.shippingAddress() != null) ? request.shippingAddress().trim() : null;
+        String shippingAddress = resolveShippingAddress(request);
 
         if (customerEmail == null || customerEmail.isEmpty()) {
             throw new IllegalArgumentException("Customer email is required for checkout.");
@@ -73,9 +74,12 @@ public class OrderServiceImpl implements OrderService {
         // New checkout order is created with PENDING status awaiting payment settlement
         Order order = Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
 
-        for (CartItem cartItem : cart.getItems()) {
+        // Sort cart items by Product ID ascending to guarantee deterministic lock acquisition order and prevent deadlocks
+        List<CartItem> sortedItems = cart.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
+
+        for (CartItem cartItem : sortedItems) {
             Long productId = cartItem.getProduct().getId();
-            Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+            Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
             if (product.getStockQuantity() < cartItem.getQuantity()) {
                 throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Available: " + product.getStockQuantity() + ", Requested: " + cartItem.getQuantity());
@@ -178,10 +182,12 @@ public class OrderServiceImpl implements OrderService {
                 if (currentStatus != OrderStatus.PENDING && currentStatus != OrderStatus.CONFIRMED) {
                     throw new BadRequestException("Only PENDING or CONFIRMED orders can be cancelled. Current status: " + currentStatus);
                 }
-                // Return stock back to inventory if order is cancelled
-                for (OrderItem item : order.getItems()) {
+                // Return stock back to inventory deterministically using pessimistic lock
+                List<OrderItem> sortedOrderItems = order.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
+
+                for (OrderItem item : sortedOrderItems) {
                     Long productId = item.getProduct().getId();
-                    Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+                    Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
                     product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
                     productRepository.save(product);
                 }
@@ -255,6 +261,13 @@ public class OrderServiceImpl implements OrderService {
         }
         if (request != null && request.customerName() != null && !request.customerName().trim().isEmpty()) {
             return request.customerName().trim();
+        }
+        return null;
+    }
+
+    private String resolveShippingAddress(CheckoutRequest request) {
+        if (request != null && request.shippingAddress() != null && !request.shippingAddress().trim().isEmpty()) {
+            return request.shippingAddress().trim();
         }
         return null;
     }
