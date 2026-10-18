@@ -6,25 +6,26 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
-/**
- * Security configuration class managing HTTP security filter chain,
- * CORS policies, role-based route rules, session policies, and method-level security.
- */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -32,51 +33,47 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final UserDetailsService userDetailsService;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
-    @Value("${app.security.pepper}")
+    @Value("${app.security.pepper:${application.security.pepper}}")
     private String pepperKey;
 
+    @Value("${app.cors.allowed-origins:${application.cors.allowed-origins:http://localhost:3000,http://localhost:5173}}")
+    private String allowedOrigins;
+
     @Bean
-    public SecurityFilterChain filterChainSetup(HttpSecurity http) throws Exception {
-        http.cors(cors -> cors.configurationSource(corsConfigurationSource())).csrf(AbstractHttpConfigurer::disable).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authorizeHttpRequests(authz -> authz
-                // Preflight requests
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthenticationProvider authenticationProvider) {
+        http.csrf(AbstractHttpConfigurer::disable).cors(cors -> cors.configurationSource(corsConfigurationSource())).headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-ancestors 'none'; object-src 'none'")).httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000)).referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint).accessDeniedHandler(accessDeniedHandler)).authorizeHttpRequests(auth -> auth
+                // Public Catalog & Static Resources
+                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll().requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll().requestMatchers(HttpMethod.GET, "/images/**").permitAll()
 
-                // Spring Boot Actuator Health & Metrics
-                .requestMatchers("/actuator/**").permitAll()
+                // Authentication endpoints
+                .requestMatchers("/api/auth/**").permitAll()
 
-                // Swagger & OpenAPI documentation
+                // Guest & Customer Cart operations
+                .requestMatchers("/api/cart/**").permitAll()
+
+                // Authenticated customer order routes (MUST PRECEDE /api/orders/{trackingNumber})
+                .requestMatchers("/api/orders/my-orders").authenticated()
+
+                // Admin order status update
+                .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasRole("ADMIN")
+
+                // Checkout and Payment endpoints
+                .requestMatchers(HttpMethod.POST, "/api/orders/checkout").permitAll().requestMatchers(HttpMethod.POST, "/api/payments/orders/**").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/{trackingNumber}").permitAll()
+
+                // Actuator Health vs Management
+                .requestMatchers("/actuator/health/**").permitAll().requestMatchers("/actuator/**").hasRole("ADMIN")
+
+                // Swagger / OpenAPI documentation
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
-                // Static catalog image assets
-                .requestMatchers("/images/**").permitAll()
+                // Admin catalog management
+                .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/categories/**").hasRole("ADMIN")
 
-                // Authentication endpoints (both /api and /api/v1)
-                .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
-
-                // Error dispatch
-                .requestMatchers("/error").permitAll()
-
-                // Public catalog browsing (both /api and /api/v1)
-                .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").permitAll()
-
-                // Administrative catalog management
-                .requestMatchers(HttpMethod.POST, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.PUT, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN").requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/v1/products/**", "/api/categories/**", "/api/v1/categories/**").hasRole("ADMIN")
-
-                // Administrative order status management (PATCH)
-                .requestMatchers(HttpMethod.PATCH, "/api/orders/**", "/api/v1/orders/**").hasRole("ADMIN")
-
-                // Shopping Cart (supports authenticated users & anonymous guest sessions via X-Cart-Token)
-                .requestMatchers("/api/cart/**", "/api/v1/cart/**").permitAll()
-
-                // Order placement & tracking (Checkout & tracking by number allow guests; my-orders requires auth)
-                .requestMatchers(HttpMethod.POST, "/api/orders/checkout", "/api/v1/orders/checkout").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/my-orders", "/api/v1/orders/my-orders").authenticated().requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/v1/orders/*").permitAll()
-
-                // Customer & Guest payment settlement
-                .requestMatchers(HttpMethod.POST, "/api/payments/**", "/api/v1/payments/**").permitAll()
-
-                // All remaining routes require authentication
-                .anyRequest().authenticated()).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .anyRequest().authenticated()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authenticationProvider(authenticationProvider).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -84,12 +81,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Token", "Accept", "Origin"));
-        configuration.setExposedHeaders(List.of("Authorization", "X-Cart-Token"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
+        List<String> origins = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+        configuration.setAllowedOrigins(origins);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Token", "Idempotency-Key"));
+        configuration.setExposedHeaders(List.of("X-Cart-Token", "Retry-After"));
+        configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
@@ -97,12 +94,19 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
+    public PasswordEncoder passwordEncoder() {
+        return new PepperedPasswordEncoder(pepperKey);
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new PepperedPasswordEncoder(pepperKey);
+    public AuthenticationProvider authenticationProvider(PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder);
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
+        return config.getAuthenticationManager();
     }
 }

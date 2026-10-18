@@ -40,17 +40,16 @@ class CatalogSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("RBAC: POST /api/products rejects unauthenticated requests with 403 Forbidden")
+    @DisplayName("RBAC: POST /api/products rejects unauthenticated requests with 401 Unauthorized")
     void testCreateProductUnauthenticatedFails() throws Exception {
         ProductRequest productRequest = ProductRequest.builder().name("Unauthorized Item").description("Should be rejected").price(new BigDecimal("99.99")).stockQuantity(10).categoryId(1L).imageUrls(List.of()).build();
 
-        mockMvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(productRequest))).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(productRequest))).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401)).andExpect(jsonPath("$.error").value("Unauthorized")).andExpect(jsonPath("$.timestamp").isString());
     }
 
     @Test
     @DisplayName("RBAC: POST /api/products rejects regular CUSTOMER role with 403 Forbidden")
     void testCreateProductCustomerRoleForbidden() throws Exception {
-        // 1. Register a regular customer
         RegisterRequest register = RegisterRequest.builder().firstName("Buyer").lastName("User").email("buyer.role@example.com").password("Password@123").build();
 
         MvcResult regResult = mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(register))).andExpect(status().isCreated()).andReturn();
@@ -58,16 +57,14 @@ class CatalogSecurityIntegrationTest {
         JsonNode jsonNode = objectMapper.readTree(regResult.getResponse().getContentAsString());
         String customerToken = jsonNode.get("token").asText();
 
-        // 2. Customer attempts an admin action
         ProductRequest productRequest = ProductRequest.builder().name("Hacker Product").description("Should be rejected by role checker").price(new BigDecimal("10.00")).stockQuantity(5).categoryId(1L).imageUrls(List.of()).build();
 
-        mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + customerToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(productRequest))).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + customerToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(productRequest))).andExpect(status().isForbidden()).andExpect(jsonPath("$.status").value(403)).andExpect(jsonPath("$.error").value("Forbidden")).andExpect(jsonPath("$.timestamp").isString());
     }
 
     @Test
     @DisplayName("RBAC: POST /api/products succeeds when executed by ADMIN role")
     void testCreateProductAdminRoleSuccess() throws Exception {
-        // 1. Login as seeded Admin
         LoginRequest adminLogin = LoginRequest.builder().email("admin@ecommerce.com").password("Admin@123456").build();
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(adminLogin))).andExpect(status().isOk()).andReturn();
@@ -75,7 +72,6 @@ class CatalogSecurityIntegrationTest {
         JsonNode jsonNode = objectMapper.readTree(loginResult.getResponse().getContentAsString());
         String adminToken = jsonNode.get("token").asText();
 
-        // 2. Admin creates a product
         ProductRequest productRequest = ProductRequest.builder().name("Admin Managed Mouse").description("Ergonomic wireless mouse").price(new BigDecimal("49.99")).stockQuantity(25).categoryId(1L).imageUrls(List.of("https://images.unsplash.com/photo-1527864550417-7fd91fc51a46")).build();
 
         mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(productRequest))).andExpect(status().isCreated()).andExpect(jsonPath("$.name").value("Admin Managed Mouse")).andExpect(jsonPath("$.price").value(49.99));
