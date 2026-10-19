@@ -11,6 +11,7 @@ import com.ecommerce.api.entity.OrderItem;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.OrderStatus;
+import com.ecommerce.api.event.OrderPlacedEvent;
 import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
@@ -22,6 +23,7 @@ import com.ecommerce.api.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -47,6 +49,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @CacheEvict(value = "products", allEntries = true)
@@ -102,6 +105,9 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getTotalAmount(), savedOrder.getStatus());
+
+        // Publish domain event to decouple asynchronous post-commit side effects
+        eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getId(), savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getCustomerName(), savedOrder.getTotalAmount()));
 
         return OrderResponse.fromEntity(savedOrder);
     }
