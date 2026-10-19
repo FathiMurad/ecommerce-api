@@ -17,6 +17,7 @@ import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,6 +45,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "products", allEntries = true)
     public PaymentResponse processPayment(String trackingNumber, PaymentRequest request) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
@@ -140,8 +142,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             String currentUserEmail = authentication.getName();
-            boolean isAdmin = authentication.getAuthorities().stream()
-                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            boolean isAdmin = authentication.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
 
             if (!isAdmin && !currentUserEmail.equalsIgnoreCase(order.getUser().getEmail())) {
                 throw new AccessDeniedException("You are not authorized to pay for this order.");

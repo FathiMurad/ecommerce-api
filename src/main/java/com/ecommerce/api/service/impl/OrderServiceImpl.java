@@ -21,6 +21,7 @@ import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
 
     @Override
+    @CacheEvict(value = "products", allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
         Cart cart = resolveCartForCheckout(user, cartToken);
 
@@ -139,6 +141,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @CacheEvict(value = "products", allEntries = true)
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
