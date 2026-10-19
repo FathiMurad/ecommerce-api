@@ -15,6 +15,8 @@ import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.PaymentRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.PaymentService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -32,7 +34,7 @@ import java.util.UUID;
 
 /**
  * Implementation of PaymentService providing idempotent payment execution,
- * stock restoration on failure, and role-aware order authorization.
+ * stock restoration on failure, latency instrumentation, and role-aware order authorization.
  */
 @Slf4j
 @Service
@@ -42,6 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final ProductRepository productRepository;
+    private final MeterRegistry meterRegistry;
 
     @Override
     @Transactional
@@ -78,6 +81,9 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Order is already paid with transaction ID: " + payment.getTransactionId());
         }
 
+        // Instrument payment latency and outcomes via Micrometer
+        Timer.Sample sample = Timer.start(meterRegistry);
+
         // Simulate Gateway: Card ending in "0000" triggers simulated failure; safely handle null card numbers
         boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
         String transactionId = generateUniqueTransactionId();
@@ -99,6 +105,9 @@ public class PaymentServiceImpl implements PaymentService {
             Payment savedPayment = paymentRepository.save(payment);
             orderRepository.save(order);
 
+            sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "declined"));
+            meterRegistry.counter("ecommerce.payments.processed", "outcome", "declined").increment();
+
             log.warn("Payment declined for trackingNumber={}, transactionId={}", trackingNumber, transactionId);
             return PaymentResponse.fromEntity(savedPayment);
         }
@@ -110,6 +119,9 @@ public class PaymentServiceImpl implements PaymentService {
 
         Payment savedPayment = paymentRepository.save(payment);
         orderRepository.save(order);
+
+        sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "approved"));
+        meterRegistry.counter("ecommerce.payments.processed", "outcome", "approved").increment();
 
         log.info("Payment completed successfully for trackingNumber={}, transactionId={}, amount={}", trackingNumber, transactionId, payment.getAmount());
 

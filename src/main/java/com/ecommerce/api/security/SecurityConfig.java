@@ -67,8 +67,8 @@ public class SecurityConfig {
                 // Checkout and Payment endpoints
                 .requestMatchers(HttpMethod.POST, "/api/orders/checkout").permitAll().requestMatchers(HttpMethod.POST, "/api/payments/orders/**").permitAll().requestMatchers(HttpMethod.GET, "/api/orders/{trackingNumber}").permitAll()
 
-                // Actuator Health vs Management
-                .requestMatchers("/actuator/health/**").permitAll().requestMatchers("/actuator/**").hasRole("ADMIN")
+                // Actuator Health & Prometheus vs Management
+                .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll().requestMatchers("/actuator/**").hasRole("ADMIN")
 
                 // Swagger / OpenAPI documentation
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

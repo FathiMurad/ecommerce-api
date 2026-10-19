@@ -20,6 +20,7 @@ import com.ecommerce.api.repository.CartRepository;
 import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.OrderService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -50,6 +51,7 @@ public class OrderServiceImpl implements OrderService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
     @Override
     @CacheEvict(value = "products", allEntries = true)
@@ -105,6 +107,9 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getTotalAmount(), savedOrder.getStatus());
+
+        // Increment business metric counter
+        meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment();
 
         // Publish domain event to decouple asynchronous post-commit side effects
         eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getId(), savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getCustomerName(), savedOrder.getTotalAmount()));
@@ -176,6 +181,7 @@ public class OrderServiceImpl implements OrderService {
                 if (currentStatus != OrderStatus.PENDING) {
                     throw new BadRequestException("Only PENDING orders can be moved to CONFIRMED. Current status: " + currentStatus);
                 }
+                meterRegistry.counter("ecommerce.orders.confirmed").increment();
             }
             case SHIPPED -> {
                 if (currentStatus != OrderStatus.CONFIRMED) {
@@ -191,6 +197,7 @@ public class OrderServiceImpl implements OrderService {
                 if (currentStatus != OrderStatus.PENDING && currentStatus != OrderStatus.CONFIRMED) {
                     throw new BadRequestException("Only PENDING or CONFIRMED orders can be cancelled. Current status: " + currentStatus);
                 }
+                meterRegistry.counter("ecommerce.orders.cancelled").increment();
                 // Return stock back to inventory deterministically using pessimistic lock
                 List<OrderItem> sortedOrderItems = order.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
 
