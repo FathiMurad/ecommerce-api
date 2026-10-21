@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Enterprise database seeder executing upon application startup.
@@ -80,7 +81,7 @@ public class DataSeeder implements CommandLineRunner {
             User customer = User.builder().firstName("Default").lastName("Customer").email(normalizedCustomerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
             User savedCustomer = userRepository.save(customer);
 
-            Cart customerCart = Cart.builder().user(savedCustomer).build();
+            Cart customerCart = Cart.builder().user(savedCustomer).cartToken(UUID.randomUUID().toString()).build();
             cartRepository.save(customerCart);
             log.info("Default Customer and initial cart initialized with email={}", normalizedCustomerEmail);
         } else {

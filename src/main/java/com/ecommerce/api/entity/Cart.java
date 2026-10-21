@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
@@ -25,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Entity representing a shopping cart containing multiple cart items.
@@ -70,11 +72,15 @@ public class Cart {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @PrePersist
+    protected void onCreate() {
+        if (this.cartToken == null || this.cartToken.isBlank()) {
+            this.cartToken = UUID.randomUUID().toString();
+        }
+    }
+
     /**
      * Adds an item to the cart or increments its quantity if it already exists.
-     *
-     * @param product  The product to add.
-     * @param quantity The quantity to add.
      */
     public void addProduct(Product product, int quantity) {
         CartItem existingItem = null;
@@ -96,8 +102,6 @@ public class Cart {
 
     /**
      * Removes an item completely from the cart by product id.
-     *
-     * @param productId The ID of the product to remove.
      */
     public void removeProduct(Long productId) {
         CartItem itemToRemove = null;
@@ -117,8 +121,6 @@ public class Cart {
 
     /**
      * Calculates the total amount for the entire cart.
-     *
-     * @return Total price as BigDecimal.
      */
     public BigDecimal calculateTotalAmount() {
         BigDecimal total = BigDecimal.ZERO;
