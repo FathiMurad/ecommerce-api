@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-and-test:
+    name: Build & Run Integration Tests
     runs-on: ubuntu-latest
 
     services:
@@ -44,5 +45,28 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/ecommerce_db
           SPRING_DATASOURCE_USERNAME: postgres
           SPRING_DATASOURCE_PASSWORD: password
+          JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+          SECURITY_PEPPER: c2VjdXJpdHktcGVwcGVyLWZvci10ZXN0aW5nLW9ubHktMTIzNDU2Nzg5MA==
           APP_SECURITY_PEPPER: c2VjdXJpdHktcGVwcGVyLWZvci10ZXN0aW5nLW9ubHktMTIzNDU2Nzg5MA==
-        run: ./mvnw clean verify
+        run: ./mvnw clean verify -B
+
+  docker-build:
+    name: Validate Docker Build
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ecommerce-api:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
