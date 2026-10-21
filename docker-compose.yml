@@ -35,10 +35,10 @@ services:
       SPRING_JPA_SHOW_SQL: "false"
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT secret key is required}
       SECURITY_PEPPER: ${SECURITY_PEPPER:?Security pepper key is required}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?Admin email is required}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin initial password is required}
-      CUSTOMER_EMAIL: ${CUSTOMER_EMAIL:?Customer email is required}
-      CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:?Customer initial password is required}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@ecommerce.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123456}
+      CUSTOMER_EMAIL: ${CUSTOMER_EMAIL:-customer@ecommerce.com}
+      CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:-Customer@123456}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     healthcheck:
@@ -46,7 +46,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 25s
     depends_on:
       postgres:
         condition: service_healthy

@@ -11,7 +11,7 @@ RUN mvn dependency:go-offline -B
 
 # Compile and package source code
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests -B
 
 # -------------------------------------------------------------
 # Stage 2: Minimal Production Runtime
@@ -24,11 +24,11 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser:appgroup
 
-# Copy executable jar from builder stage
-COPY --from=builder /build/target/*.jar app.jar
+# Copy executable jar from builder stage with correct permissions
+COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 
 # Expose API port
 EXPOSE 8080
 
 # Configure memory limits and container-aware JVM flags
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]
