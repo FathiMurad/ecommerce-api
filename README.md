@@ -1,23 +1,28 @@
 # Enterprise E-Commerce RESTful API
 
+[![CI](https://github.com/FathiMurad/ecommerce-api/actions/workflows/ci.yml/badge.svg)](https://github.com/FathiMurad/ecommerce-api/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker_Compose-Enabled-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A production-ready, secure, and containerized backend REST API for an enterprise e-commerce platform built with **Spring Boot 4**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
+A production-ready, secure, and containerized backend REST API for an enterprise supermarket e-commerce platform built with **Spring Boot 4**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
 
 ---
 
 ## Architectural Highlights
 
-- **Stateless Authentication & RBAC**: JWT-based authentication featuring role separation (`ROLE_CUSTOMER` vs. `ROLE_ADMIN`) with method-level security and route-level authorization filters.
-- **Transactional Consistency**: Atomic checkout workflows enforcing strict inventory validation, balance deductions, purchase price snapshots, and shopping cart clearance.
-- **Resilient Financial Transactions**: Simulated payment gateway with duplicate payment prevention, financial audit logging, and automated inventory rollbacks on transaction failure.
-- **Deterministic Order Lifecycle**: State-machine-governed order progression (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED` / `CANCELLED`), preventing invalid status transitions and handling stock release on administrative cancellations.
-- **Containerized Infrastructure**: Production-grade multi-stage Docker build and multi-container orchestration with PostgreSQL health checks.
-- **Automated Quality Gate**: Comprehensive integration testing suite using `MockMvc` and Spring Boot TestContext against live PostgreSQL instances, verified via GitHub Actions CI.
+- **Stateless Authentication & RBAC**: JWT-based authentication featuring role separation (`ROLE_CUSTOMER` vs. `ROLE_ADMIN`) with route-level authorization and HMAC-SHA256 password pepper hashing.
+- **Transactional Consistency & Pessimistic Locking**: Atomic checkout workflows enforcing strict inventory validation, balance deductions, purchase price snapshots, and automated cart clearance.
+- **Asynchronous Domain Events**: Decoupled order event processing via `@TransactionalEventListener(phase = AFTER_COMMIT)` backed by a dedicated bounded `ThreadPoolTaskExecutor`.
+- **Brute-Force & DoS Mitigation**: Custom, thread-safe in-memory Token-Bucket rate limiting filter isolating client IP addresses across authentication and checkout endpoints (`HTTP 429 Too Many Requests`).
+- **Production Observability & Metrics**: Micrometer & Spring Boot Actuator integration exposing Prometheus metrics (`/actuator/prometheus`), business counters (`ecommerce.orders.placed`), and payment latency timers.
+- **Resilient Financial Transactions**: Payment gateway simulation featuring duplicate transaction prevention, financial audit logging, and automated inventory rollbacks on failure.
+- **Deterministic Order Lifecycle**: State-machine-governed order progression (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED` / `CANCELLED`), preventing illegal state transitions and automatically restoring inventory upon cancellation.
+- **Containerized Infrastructure**: Production-grade multi-stage Docker build running under an unprivileged user (`appuser`), orchestrated alongside PostgreSQL with automated health checks.
+- **Automated Quality Gate**: Comprehensive integration test suite using `MockMvc` against live PostgreSQL instances, verified via GitHub Actions CI pipeline.
 
 ---
 
@@ -26,13 +31,15 @@ A production-ready, secure, and containerized backend REST API for an enterprise
 | Layer | Technology |
 | :--- | :--- |
 | **Language & Platform** | Java 21 (LTS) |
-| **Framework** | Spring Boot 4.1.1 (Web, Security, Data JPA, Validation) |
-| **Security & Token** | Spring Security, JJWT 0.12.6, BCrypt |
-| **Database & ORM** | PostgreSQL 16, Hibernate 7, HikariCP |
+| **Framework** | Spring Boot 4.1.1 (Web, Security, Data JPA, Validation, Actuator) |
+| **Security & Cryptography** | Spring Security 6, JJWT 0.12.6, BCrypt + Global HMAC-SHA256 Pepper |
+| **Database & ORM** | PostgreSQL 16, Hibernate 7, HikariCP Connection Pool |
+| **Concurrency & Async** | Spring Task Execution (`ThreadPoolTaskExecutor`), Domain Application Events |
+| **Observability** | Micrometer, Prometheus Metrics Registry, Spring Boot Actuator |
 | **API Documentation** | OpenAPI 3.1 / Swagger UI (`springdoc-openapi`) |
-| **Containerization** | Docker, Docker Compose (Multi-stage build) |
-| **Testing** | JUnit 5, MockMvc, AssertJ, Mockito |
-| **CI/CD** | GitHub Actions |
+| **Containerization** | Docker (Multi-stage build, Alpine JRE 21), Docker Compose |
+| **Testing** | JUnit 5, MockMvc, AssertJ, Spring Boot TestContext |
+| **CI/CD** | GitHub Actions Pipeline |
 
 ---
 
@@ -68,6 +75,7 @@ A production-ready, secure, and containerized backend REST API for an enterprise
   | transaction_id|                                     | product_id(FK)|
   | payment_status|                                     | image_url     |
   +---------------+                                     +---------------+
+
 ```
 
 ---
@@ -76,68 +84,89 @@ A production-ready, secure, and containerized backend REST API for an enterprise
 
 ### Prerequisites
 
-* **Docker** and **Docker Compose**
-* **Java 21 JDK** and **Maven** (optional, wrapper `./mvnw` included)
+* **Docker Engine** & **Docker Compose**
+* **Java 21 JDK** & **Maven** (optional, wrapper `./mvnw` provided)
 
-### 1. Clone Repository
+### 1. Clone Repository & Setup Environment
 
 ```bash
-git clone https://github.com/<your-username>/ecommerce-api.git
+git clone https://github.com/FathiMurad/ecommerce-api.git
 cd ecommerce-api
+
+# Copy example environment configuration
+cp .env.example .env
+
 ```
+
+Ensure secrets in `.env` are set or use default development credentials.
 
 ### 2. Run with Docker Compose (Recommended)
 
-Launch both the Spring Boot API and the PostgreSQL database container:
+Build and launch the containerized application and PostgreSQL database:
 
 ```bash
 docker compose up --build -d
+
 ```
 
-The application will wait for the PostgreSQL container to pass health checks before booting.
+The API service will automatically await PostgreSQL healthiness before starting. Verify status via:
 
-### 3. Run Locally with Terminal / IntelliJ
+```bash
+docker compose ps
 
-Ensure PostgreSQL is running:
+```
+
+### 3. Run Locally (Development Mode)
+
+Start the PostgreSQL service container:
 
 ```bash
 docker compose up -d postgres
+
 ```
 
-Run the application:
+Run the Spring Boot application using Maven:
 
 ```bash
 ./mvnw spring-boot:run
+
 ```
 
 ---
 
-## API Documentation (Swagger)
+## API Documentation & Observability
 
-Once the application is running, the interactive Swagger UI and OpenAPI specifications are accessible at:
+### Interactive Documentation
 
 * **Swagger UI**: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
 * **OpenAPI Schema**: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+
+### Production Observability Endpoints
+
+* **Health Status**: `GET /actuator/health`
+* **Prometheus Metrics**: `GET /actuator/prometheus`
+* **Application Info**: `GET /actuator/info`
 
 ### Seeded Credentials
 
 | Role | Email | Password |
 | --- | --- | --- |
 | **System Administrator** | `admin@ecommerce.com` | `Admin@123456` |
+| **Default Customer** | `customer@ecommerce.com` | `Customer@123456` |
 
 ---
 
 ## Core API Endpoints
 
-### Authentication
+### Authentication & Security *(Rate Limited)*
 
 * `POST /api/auth/register` - Register a customer account and receive a JWT.
 * `POST /api/auth/login` - Authenticate and acquire bearer token.
 
-### Catalog (Public & Admin Protected)
+### Catalog Management
 
-* `GET /api/products` - Paged and sorted product catalog.
-* `GET /api/products/{id}` - Product details with associated images.
+* `GET /api/products` - Paged and sorted product catalog (Public).
+* `GET /api/products/{id}` - Product details with associated images (Public).
 * `POST /api/products` - Create new product (*Admin only*).
 * `PUT /api/products/{id}` - Modify product metadata and inventory (*Admin only*).
 * `DELETE /api/products/{id}` - Soft/hard delete product (*Admin only*).
@@ -149,23 +178,24 @@ Once the application is running, the interactive Swagger UI and OpenAPI specific
 * `PUT /api/cart/items/{itemId}` - Update item quantity.
 * `DELETE /api/cart/items/{itemId}` - Remove item from cart.
 
-### Order Processing & Lifecycle
+### Order Processing & Lifecycle *(Rate Limited Checkout)*
 
-* `POST /api/orders/checkout` - Atomic transaction deducting stock and clearing cart.
+* `POST /api/orders/checkout` - Atomic transaction deducting stock, creating order, and firing asynchronous events.
 * `GET /api/orders/my-orders` - Paged order history for authenticated user.
-* `GET /api/orders/{trackingNumber}` - Look up order by tracking code.
+* `GET /api/orders/{trackingNumber}` - Look up order details by tracking code.
 * `PATCH /api/orders/{trackingNumber}/status` - Advance order lifecycle state (*Admin only*).
 
-### Payments
+### Payments & Auditing
 
-* `POST /api/payments/process` - Process mock transaction, bind to order, and trigger inventory rollback on failure.
+* `POST /api/payments/process` - Process mock transaction, record payment audit, and trigger rollback on failure.
 
 ---
 
 ## Running the Automated Test Suite
 
-Execute the full suite of integration and security tests:
+Execute the full suite of integration, security, and repository tests against live PostgreSQL:
 
 ```bash
-./mvnw clean test
+./mvnw clean verify
+
 ```
