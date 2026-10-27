@@ -3,8 +3,11 @@ package com.ecommerce.api.entity.enums;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.util.Arrays;
+
 /**
  * Lifecycle states of an order in the e-commerce system.
+ * Features resilient JSON serialization and case-insensitive deserialization.
  */
 public enum OrderStatus {
     PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED;
@@ -28,6 +31,6 @@ public enum OrderStatus {
             }
         }
 
-        throw new IllegalArgumentException("Unknown order status: " + value);
+        throw new IllegalArgumentException("Unknown order status: '" + value + "'. Supported statuses: " + Arrays.toString(values()));
     }
 }

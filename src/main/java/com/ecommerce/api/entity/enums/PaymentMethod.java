@@ -7,7 +7,6 @@ import java.util.Arrays;
 
 /**
  * Enumeration representing the supported payment methods within the supermarket system.
- * Features resilient JSON serialization and case-insensitive deserialization.
  */
 public enum PaymentMethod {
     CREDIT_CARD, DEBIT_CARD, PAYPAL, CASH_ON_DELIVERY;
