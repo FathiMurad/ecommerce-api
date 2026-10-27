@@ -3,6 +3,8 @@ package com.ecommerce.api.entity.enums;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.util.Arrays;
+
 /**
  * Enumeration representing the supported payment methods within the supermarket system.
  * Features resilient JSON serialization and case-insensitive deserialization.
@@ -29,6 +31,6 @@ public enum PaymentMethod {
             }
         }
 
-        throw new IllegalArgumentException("Unknown payment method: " + value);
+        throw new IllegalArgumentException("Unknown payment method: '" + value + "'. Supported methods: " + Arrays.toString(values()));
     }
 }
