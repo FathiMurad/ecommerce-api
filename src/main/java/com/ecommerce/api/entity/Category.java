@@ -7,8 +7,10 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,22 +25,22 @@ import java.util.List;
  * Used for catalog navigation and search filtering.
  */
 @Entity
-@Table(name = "categories")
+@Table(name = "categories", indexes = {@Index(name = "idx_category_name", columnList = "name", unique = true)})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class Category {
 
     public static final int NAME_MAX_LENGTH = 100;
-    public static final int DESCRIPTION_MAX_LENGTH = 255;
+    public static final int DESCRIPTION_MAX_LENGTH = 500;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = NAME_MAX_LENGTH, comment = "Unique human-readable category name")
+    @Column(nullable = false, unique = true, length = NAME_MAX_LENGTH)
     private String name;
 
     @Column(length = DESCRIPTION_MAX_LENGTH)
