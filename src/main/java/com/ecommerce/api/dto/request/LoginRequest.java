@@ -6,18 +6,24 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 /**
  * Data Transfer Object representing a user login request.
- * Contains the credentials required to authenticate an existing user.
+ * Contains credentials required for authenticating an existing user securely.
  */
-@Data
+@Getter
+@Setter
 @Builder
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = "password")
 public class LoginRequest {
+
+    public static final int PASSWORD_MAX_LENGTH = 100;
 
     /**
      * The email address used during registration.
@@ -31,6 +37,6 @@ public class LoginRequest {
      * The raw password provided by the user for authentication.
      */
     @NotBlank(message = "Password is required")
-    @Size(max = User.PASSWORD_MAX_LENGTH, message = "Password must not exceed {max} characters")
+    @Size(max = PASSWORD_MAX_LENGTH, message = "Password must not exceed {max} characters")
     private String password;
 }
