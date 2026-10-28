@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,13 +28,13 @@ import java.util.List;
 
 /**
  * Core product entity representing an item available for sale.
- * Supports optimistic concurrency control and multiple product images.
+ * Supports optimistic concurrency control and batched loading for product images.
  */
 @Entity
 @Table(name = "products", indexes = {@Index(name = "idx_product_category", columnList = "category_id")})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class Product {
@@ -43,6 +44,13 @@ public class Product {
     public static final int PRICE_PRECISION = MoneyConstants.PRECISION;
     public static final int PRICE_SCALE = MoneyConstants.SCALE;
 
+    /**
+     * Batch size for loading lazily-fetched product images.
+     * Mitigates the N+1 SELECT problem by instructing Hibernate to load images
+     * for up to 50 parent products simultaneously using an SQL 'IN' clause.
+     */
+    public static final int IMAGES_BATCH_SIZE = 50;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,10 +58,10 @@ public class Product {
     @Column(nullable = false, length = NAME_MAX_LENGTH)
     private String name;
 
-    @Column(length = DESCRIPTION_MAX_LENGTH, comment = "Detailed product description limited to 2000 characters to prevent resource exhaustion")
+    @Column(length = DESCRIPTION_MAX_LENGTH)
     private String description;
 
-    @Column(nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE, comment = "Monetary unit stored as exact decimal to avoid floating-point rounding issues")
+    @Column(nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE)
     private BigDecimal price;
 
     @Column(nullable = false)
@@ -70,15 +78,18 @@ public class Product {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
-    @BatchSize(size = 50)
+    @BatchSize(size = IMAGES_BATCH_SIZE)
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ProductImage> images = new ArrayList<>();
 
     /**
-     * Helper method to maintain bidirectional relationship consistency.
+     * Helper method to maintain bidirectional relationship consistency safely.
      */
     public void addImage(ProductImage image) {
+        if (image == null) {
+            return;
+        }
         images.add(image);
         image.setProduct(this);
     }
@@ -88,6 +99,9 @@ public class Product {
      */
     @SuppressWarnings("unused")
     public void removeImage(ProductImage image) {
+        if (image == null) {
+            return;
+        }
         images.remove(image);
         image.setProduct(null);
     }
