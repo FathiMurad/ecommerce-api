@@ -10,6 +10,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,27 +25,28 @@ import lombok.Setter;
 @Table(name = "product_images", indexes = {@Index(name = "idx_product_image_product", columnList = "product_id")})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class ProductImage {
 
     public static final int IMAGE_URL_MAX_LENGTH = 500;
+    public static final int DEFAULT_DISPLAY_ORDER = 0;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = IMAGE_URL_MAX_LENGTH, comment = "Direct URL pointing to the image asset stored in object storage (e.g., S3/CDN)")
+    @Column(nullable = false, length = IMAGE_URL_MAX_LENGTH)
     private String imageUrl;
 
-    @Column(nullable = false, comment = "Indicates whether this image is the main display thumbnail for product listings")
     @Builder.Default
+    @Column(nullable = false)
     private boolean isPrimary = false;
 
-    @Column(nullable = false, comment = "Display sequence index for frontend carousel or thumbnail grid")
     @Builder.Default
-    private Integer displayOrder = 0;
+    @Column(nullable = false)
+    private Integer displayOrder = DEFAULT_DISPLAY_ORDER;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
