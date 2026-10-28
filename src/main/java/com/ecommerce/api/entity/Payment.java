@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -29,33 +30,36 @@ import java.time.LocalDateTime;
 
 /**
  * Entity representing an individual payment transaction linked to an Order.
+ * Tracks gateway transaction status, payment method, and failure diagnostics.
  */
 @Entity
-@Table(name = "payments", indexes = {@Index(name = "idx_payment_transaction_id", columnList = "transaction_id", unique = true), @Index(name = "idx_payment_order_id", columnList = "order_id", unique = true)})
+@Table(name = "payments", indexes = {@Index(name = "idx_payment_transaction_id", columnList = "transaction_id", unique = true), @Index(name = "idx_payment_order_id", columnList = "order_id", unique = true), @Index(name = "idx_payment_status", columnList = "status")})
 @Getter
 @Setter
-@Builder
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
+@Builder
 public class Payment {
 
     public static final int TRANSACTION_ID_MAX_LENGTH = 100;
     public static final int STATUS_MAX_LENGTH = 30;
     public static final int PAYMENT_METHOD_MAX_LENGTH = 30;
-    public static final int FAILURE_REASON_MAX_LENGTH = 255;
+    public static final int FAILURE_REASON_MAX_LENGTH = 500;
+    public static final int AMOUNT_PRECISION = MoneyConstants.PRECISION;
+    public static final int AMOUNT_SCALE = MoneyConstants.SCALE;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false, unique = true)
     private Order order;
 
     @Column(name = "transaction_id", nullable = false, unique = true, length = TRANSACTION_ID_MAX_LENGTH)
     private String transactionId;
 
-    @Column(nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
+    @Column(nullable = false, precision = AMOUNT_PRECISION, scale = AMOUNT_SCALE)
     private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
@@ -73,10 +77,10 @@ public class Payment {
     private Integer version;
 
     @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
+    @Column(nullable = false)
     private LocalDateTime updatedAt;
 }
