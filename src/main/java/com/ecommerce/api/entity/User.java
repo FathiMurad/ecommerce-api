@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -29,7 +30,7 @@ import java.time.LocalDateTime;
 @Table(name = "users", indexes = {@Index(name = "idx_user_email", columnList = "email", unique = true)})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class User {
@@ -38,7 +39,7 @@ public class User {
 
     /**
      * Maximum column length for the stored password hash in the database.
-     * Accommodates fixed-length BCrypt hashes (60 chars) as well as larger hashes
+     * Accommodates fixed-length Bcrypt hashes (60 chars) as well as larger hashes
      * like Argon2id (~95-100 chars) or PBKDF2 without requiring database schema migrations.
      */
     public static final int PASSWORD_HASH_MAX_LENGTH = 255;
@@ -82,8 +83,4 @@ public class User {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
-
-    public String getFullName() {
-        return firstName + " " + lastName;
-    }
 }
