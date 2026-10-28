@@ -6,10 +6,12 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,15 +25,18 @@ import java.time.LocalDateTime;
 
 /**
  * Entity representing an individual product item and its quantity within a cart.
+ * Enforces uniqueness per cart-product pair and provides safe monetary subtotal calculation.
  */
 @Entity
-@Table(name = "cart_items", uniqueConstraints = {@UniqueConstraint(name = "uk_cart_item_cart_product", columnNames = {"cart_id", "product_id"})})
+@Table(name = "cart_items", uniqueConstraints = {@UniqueConstraint(name = "uk_cart_item_cart_product", columnNames = {"cart_id", "product_id"})}, indexes = {@Index(name = "idx_cart_item_product", columnList = "product_id")})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class CartItem {
+
+    public static final int DEFAULT_QUANTITY = 1;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,7 +51,8 @@ public class CartItem {
     private Product product;
 
     @Column(nullable = false)
-    private Integer quantity;
+    @Builder.Default
+    private Integer quantity = DEFAULT_QUANTITY;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -58,13 +64,13 @@ public class CartItem {
 
     /**
      * Calculates the subtotal price for this cart item based on current product price.
-     *
-     * @return Subtotal amount as BigDecimal.
+     * Safely returns BigDecimal.ZERO for null or non-positive values.
      */
     public BigDecimal getSubtotal() {
-        if (product == null || product.getPrice() == null || quantity == null) {
+        if (product == null || product.getPrice() == null || quantity == null || quantity <= 0) {
             return BigDecimal.ZERO;
         }
         return product.getPrice().multiply(BigDecimal.valueOf(quantity));
     }
 }
+
