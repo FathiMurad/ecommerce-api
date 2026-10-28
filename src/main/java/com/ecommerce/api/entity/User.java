@@ -21,6 +21,10 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
+/**
+ * JPA entity representing an application user within the supermarket system.
+ * Incorporates optimistic locking, audit timestamps, and indexing for data integrity and performance.
+ */
 @Entity
 @Table(name = "users", indexes = {@Index(name = "idx_user_email", columnList = "email", unique = true)})
 @Getter
@@ -31,7 +35,14 @@ import java.time.LocalDateTime;
 public class User {
 
     public static final int EMAIL_MAX_LENGTH = 150;
-    public static final int PASSWORD_MAX_LENGTH = 255;
+
+    /**
+     * Maximum column length for the stored password hash in the database.
+     * Accommodates fixed-length BCrypt hashes (60 chars) as well as larger hashes
+     * like Argon2id (~95-100 chars) or PBKDF2 without requiring database schema migrations.
+     */
+    public static final int PASSWORD_HASH_MAX_LENGTH = 255;
+
     public static final int FIRST_NAME_MAX_LENGTH = 50;
     public static final int LAST_NAME_MAX_LENGTH = 50;
     public static final int ROLE_MAX_LENGTH = 30;
@@ -43,7 +54,7 @@ public class User {
     @Column(nullable = false, unique = true, length = EMAIL_MAX_LENGTH)
     private String email;
 
-    @Column(nullable = false, length = PASSWORD_MAX_LENGTH)
+    @Column(nullable = false, length = PASSWORD_HASH_MAX_LENGTH)
     private String password;
 
     @Column(name = "first_name", nullable = false, length = FIRST_NAME_MAX_LENGTH)
@@ -54,7 +65,8 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = ROLE_MAX_LENGTH)
-    private Role role;
+    @Builder.Default
+    private Role role = Role.ROLE_CUSTOMER;
 
     @Builder.Default
     @Column(name = "is_active", nullable = false)
