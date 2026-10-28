@@ -14,6 +14,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -36,7 +37,7 @@ import java.util.UUID;
 @Table(name = "carts", indexes = {@Index(name = "idx_cart_token", columnList = "cart_token", unique = true), @Index(name = "idx_cart_user_id", columnList = "user_id")})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class Cart {
@@ -57,7 +58,7 @@ public class Cart {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<CartItem> items = new ArrayList<>();
 
@@ -81,12 +82,16 @@ public class Cart {
 
     /**
      * Adds an item to the cart or increments its quantity if it already exists.
+     * Safely ignores invalid input to prevent runtime exceptions.
      */
     public void addProduct(Product product, int quantity) {
-        CartItem existingItem = null;
+        if (product == null || product.getId() == null || quantity <= 0) {
+            return;
+        }
 
+        CartItem existingItem = null;
         for (CartItem item : this.items) {
-            if (item.getProduct().getId().equals(product.getId())) {
+            if (item.getProduct() != null && product.getId().equals(item.getProduct().getId())) {
                 existingItem = item;
                 break;
             }
@@ -102,12 +107,16 @@ public class Cart {
 
     /**
      * Removes an item completely from the cart by product id.
+     * Safely handles null checks to prevent runtime exceptions.
      */
     public void removeProduct(Long productId) {
-        CartItem itemToRemove = null;
+        if (productId == null) {
+            return;
+        }
 
+        CartItem itemToRemove = null;
         for (CartItem item : this.items) {
-            if (item.getProduct().getId().equals(productId)) {
+            if (item.getProduct() != null && productId.equals(item.getProduct().getId())) {
                 itemToRemove = item;
                 break;
             }
@@ -120,24 +129,28 @@ public class Cart {
     }
 
     /**
-     * Calculates the total amount for the entire cart.
+     * Calculates the total amount for the entire cart safely without rounding errors.
      */
     public BigDecimal calculateTotalAmount() {
         BigDecimal total = BigDecimal.ZERO;
 
         for (CartItem item : this.items) {
-            total = total.add(item.getSubtotal());
+            if (item != null && item.getSubtotal() != null) {
+                total = total.add(item.getSubtotal());
+            }
         }
 
         return total;
     }
 
     /**
-     * Clears all items from the cart.
+     * Clears all items from the cart and disassociates the bidirectional link.
      */
     public void clear() {
         for (CartItem item : this.items) {
-            item.setCart(null);
+            if (item != null) {
+                item.setCart(null);
+            }
         }
         this.items.clear();
     }
