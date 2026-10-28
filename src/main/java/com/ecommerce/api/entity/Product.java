@@ -67,12 +67,8 @@ public class Product {
     @Column(nullable = false)
     private Integer stockQuantity;
 
-    /**
-     * Managed by JPA for optimistic locking.
-     * Prevents race conditions during concurrent checkout transactions.
-     */
     @Version
-    private Long version;
+    private Integer version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
