@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,15 +24,20 @@ import java.time.LocalDateTime;
 
 /**
  * Entity representing an individual purchased line item with historical pricing.
+ * Retains an immutable snapshot of product pricing at the moment of checkout.
  */
 @Entity
 @Table(name = "order_items", indexes = {@Index(name = "idx_order_item_order", columnList = "order_id"), @Index(name = "idx_order_item_product", columnList = "product_id")})
 @Getter
 @Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class OrderItem {
+
+    public static final int PRICE_PRECISION = MoneyConstants.PRECISION;
+    public static final int PRICE_SCALE = MoneyConstants.SCALE;
+    public static final int DEFAULT_QUANTITY = 1;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,9 +52,10 @@ public class OrderItem {
     private Product product;
 
     @Column(nullable = false)
-    private Integer quantity;
+    @Builder.Default
+    private Integer quantity = DEFAULT_QUANTITY;
 
-    @Column(name = "price_at_purchase", nullable = false, precision = MoneyConstants.PRECISION, scale = MoneyConstants.SCALE)
+    @Column(name = "price_at_purchase", nullable = false, precision = PRICE_PRECISION, scale = PRICE_SCALE)
     private BigDecimal priceAtPurchase;
 
     @CreationTimestamp
@@ -57,11 +64,10 @@ public class OrderItem {
 
     /**
      * Calculates line subtotal based on the historical purchase price.
-     *
-     * @return Subtotal amount as BigDecimal.
+     * Safely returns BigDecimal.ZERO for null or non-positive values.
      */
     public BigDecimal getSubtotal() {
-        if (priceAtPurchase == null || quantity == null) {
+        if (priceAtPurchase == null || quantity == null || quantity <= 0) {
             return BigDecimal.ZERO;
         }
         return priceAtPurchase.multiply(BigDecimal.valueOf(quantity));
