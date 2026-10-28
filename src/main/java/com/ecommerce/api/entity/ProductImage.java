@@ -62,6 +62,7 @@ public class ProductImage {
     /**
      * Backward-compatible setter alias for mapping layers.
      */
+    @SuppressWarnings("unused")
     public void setIsPrimary(boolean isPrimary) {
         this.isPrimary = isPrimary;
     }
