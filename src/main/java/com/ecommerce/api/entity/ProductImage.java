@@ -53,14 +53,15 @@ public class ProductImage {
     private Product product;
 
     /**
-     * Backward-compatible getter alias for serialization and mapping layers.
+     * Required for Jackson and reflection mappers.
+     * Lombok generates 'isPrimary()', which breaks frameworks expecting JavaBean 'getIsPrimary()'.
      */
     public boolean getIsPrimary() {
         return this.isPrimary;
     }
 
     /**
-     * Backward-compatible setter alias for mapping layers.
+     * Required for deserialization layers expecting standard JavaBean 'setIsPrimary()'.
      */
     @SuppressWarnings("unused")
     public void setIsPrimary(boolean isPrimary) {
