@@ -22,10 +22,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/**
- * Entity representing an individual purchased line item with historical pricing.
- * Retains an immutable snapshot of product pricing at the moment of checkout.
- */
 @Entity
 @Table(name = "order_items", indexes = {@Index(name = "idx_order_item_order", columnList = "order_id"), @Index(name = "idx_order_item_product", columnList = "product_id")})
 @Getter
@@ -62,14 +58,11 @@ public class OrderItem {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    /**
-     * Calculates line subtotal based on the historical purchase price.
-     * Safely returns BigDecimal.ZERO for null or non-positive values.
-     */
     public BigDecimal getSubtotal() {
         if (priceAtPurchase == null || quantity == null || quantity <= 0) {
             return BigDecimal.ZERO;
         }
+
         return priceAtPurchase.multiply(BigDecimal.valueOf(quantity));
     }
 }
