@@ -23,10 +23,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/**
- * Entity representing an individual product item and its quantity within a cart.
- * Enforces uniqueness per cart-product pair and provides safe monetary subtotal calculation.
- */
 @Entity
 @Table(name = "cart_items", uniqueConstraints = {@UniqueConstraint(name = "uk_cart_item_cart_product", columnNames = {"cart_id", "product_id"})}, indexes = {@Index(name = "idx_cart_item_product", columnList = "product_id")})
 @Getter
@@ -62,15 +58,11 @@ public class CartItem {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    /**
-     * Calculates the subtotal price for this cart item based on current product price.
-     * Safely returns BigDecimal.ZERO for null or non-positive values.
-     */
     public BigDecimal getSubtotal() {
         if (product == null || product.getPrice() == null || quantity == null || quantity <= 0) {
             return BigDecimal.ZERO;
         }
+
         return product.getPrice().multiply(BigDecimal.valueOf(quantity));
     }
 }
-
