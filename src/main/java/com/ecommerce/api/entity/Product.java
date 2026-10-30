@@ -26,10 +26,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Core product entity representing an item available for sale.
- * Supports optimistic concurrency control and batched loading for product images.
- */
 @Entity
 @Table(name = "products", indexes = {@Index(name = "idx_product_category", columnList = "category_id")})
 @Getter
@@ -79,26 +75,12 @@ public class Product {
     @Builder.Default
     private List<ProductImage> images = new ArrayList<>();
 
-    /**
-     * Helper method to maintain bidirectional relationship consistency safely.
-     */
     public void addImage(ProductImage image) {
         if (image == null) {
             return;
         }
-        images.add(image);
-        image.setProduct(this);
-    }
 
-    /**
-     * Helper method to safely remove an image from the product.
-     */
-    @SuppressWarnings("unused")
-    public void removeImage(ProductImage image) {
-        if (image == null) {
-            return;
-        }
-        images.remove(image);
-        image.setProduct(null);
+        this.images.add(image);
+        image.setProduct(this);
     }
 }
