@@ -29,12 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Entity representing a shopping cart containing multiple cart items.
- * Can be associated with an authenticated User or exist anonymously via cartToken.
- */
 @Entity
-@Table(name = "carts", indexes = {@Index(name = "idx_cart_token", columnList = "cart_token", unique = true), @Index(name = "idx_cart_user_id", columnList = "user_id")})
+@Table(name = "carts", indexes = {@Index(name = "idx_cart_user_id", columnList = "user_id")})
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -80,23 +76,12 @@ public class Cart {
         }
     }
 
-    /**
-     * Adds an item to the cart or increments its quantity if it already exists.
-     * Safely ignores invalid input to prevent runtime exceptions.
-     */
     public void addProduct(Product product, int quantity) {
         if (product == null || product.getId() == null || quantity <= 0) {
             return;
         }
 
-        CartItem existingItem = null;
-        for (CartItem item : this.items) {
-            if (item.getProduct() != null && product.getId().equals(item.getProduct().getId())) {
-                existingItem = item;
-                break;
-            }
-        }
-
+        CartItem existingItem = findItemByProductId(product.getId());
         if (existingItem != null) {
             existingItem.setQuantity(existingItem.getQuantity() + quantity);
         } else {
@@ -105,32 +90,18 @@ public class Cart {
         }
     }
 
-    /**
-     * Removes an item completely from the cart by product id.
-     * Safely handles null checks to prevent runtime exceptions.
-     */
     public void removeProduct(Long productId) {
         if (productId == null) {
             return;
         }
 
-        CartItem itemToRemove = null;
-        for (CartItem item : this.items) {
-            if (item.getProduct() != null && productId.equals(item.getProduct().getId())) {
-                itemToRemove = item;
-                break;
-            }
-        }
-
+        CartItem itemToRemove = findItemByProductId(productId);
         if (itemToRemove != null) {
             this.items.remove(itemToRemove);
             itemToRemove.setCart(null);
         }
     }
 
-    /**
-     * Calculates the total amount for the entire cart safely without rounding errors.
-     */
     public BigDecimal calculateTotalAmount() {
         BigDecimal total = BigDecimal.ZERO;
 
@@ -143,15 +114,27 @@ public class Cart {
         return total;
     }
 
-    /**
-     * Clears all items from the cart and disassociates the bidirectional link.
-     */
     public void clear() {
         for (CartItem item : this.items) {
             if (item != null) {
                 item.setCart(null);
             }
         }
+
         this.items.clear();
+    }
+
+    private CartItem findItemByProductId(Long productId) {
+        if (productId == null) {
+            return null;
+        }
+
+        for (CartItem item : this.items) {
+            if (item.getProduct() != null && productId.equals(item.getProduct().getId())) {
+                return item;
+            }
+        }
+
+        return null;
     }
 }
