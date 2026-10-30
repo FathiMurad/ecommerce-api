@@ -17,10 +17,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/**
- * Represents a single image asset associated with a product.
- * Supports primary thumbnail designation and gallery display ordering.
- */
 @Entity
 @Table(name = "product_images", indexes = {@Index(name = "idx_product_image_product", columnList = "product_id")})
 @Getter
@@ -58,13 +54,5 @@ public class ProductImage {
      */
     public boolean getIsPrimary() {
         return this.isPrimary;
-    }
-
-    /**
-     * Required for deserialization layers expecting standard JavaBean 'setIsPrimary()'.
-     */
-    @SuppressWarnings("unused")
-    public void setIsPrimary(boolean isPrimary) {
-        this.isPrimary = isPrimary;
     }
 }
