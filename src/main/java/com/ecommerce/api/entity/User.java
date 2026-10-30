@@ -8,7 +8,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AccessLevel;
@@ -22,12 +21,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * JPA entity representing an application user within the supermarket system.
- * Incorporates optimistic locking, audit timestamps, and indexing for data integrity and performance.
- */
 @Entity
-@Table(name = "users", indexes = {@Index(name = "idx_user_email", columnList = "email", unique = true)})
+@Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
