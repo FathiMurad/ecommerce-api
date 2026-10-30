@@ -28,12 +28,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/**
- * Entity representing an individual payment transaction linked to an Order.
- * Tracks gateway transaction status, payment method, and failure diagnostics.
- */
 @Entity
-@Table(name = "payments", indexes = {@Index(name = "idx_payment_transaction_id", columnList = "transaction_id", unique = true), @Index(name = "idx_payment_order_id", columnList = "order_id", unique = true), @Index(name = "idx_payment_status", columnList = "status")})
+@Table(name = "payments", indexes = {@Index(name = "idx_payment_status", columnList = "status")})
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
