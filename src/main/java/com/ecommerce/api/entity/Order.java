@@ -32,12 +32,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Entity representing an order placed by a customer.
- * Supports registered and guest checkouts, optimistic concurrency control, and batched items loading.
- */
 @Entity
-@Table(name = "orders", indexes = {@Index(name = "idx_order_tracking_number", columnList = "tracking_number", unique = true), @Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id"), @Index(name = "idx_order_status", columnList = "status")})
+@Table(name = "orders", indexes = {@Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id"), @Index(name = "idx_order_status", columnList = "status")})
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -105,9 +101,6 @@ public class Order {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    /**
-     * Helper method to attach order items maintaining bidirectional integrity safely.
-     */
     public void addItem(OrderItem item) {
         if (item == null) {
             return;
@@ -117,22 +110,6 @@ public class Order {
         item.setOrder(this);
     }
 
-    /**
-     * Helper method to safely remove an item from the order.
-     */
-    @SuppressWarnings("unused")
-    public void removeItem(OrderItem item) {
-        if (item == null) {
-            return;
-        }
-
-        this.items.remove(item);
-        item.setOrder(null);
-    }
-
-    /**
-     * Calculates the order total safely from all valid line items.
-     */
     public BigDecimal calculateTotalAmount() {
         BigDecimal total = BigDecimal.ZERO;
 
