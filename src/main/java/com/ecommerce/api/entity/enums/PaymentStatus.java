@@ -5,10 +5,6 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
 
-/**
- * Lifecycle states of a payment transaction in the supermarket system.
- * Features resilient JSON serialization and case-insensitive deserialization.
- */
 public enum PaymentStatus {
     PENDING, COMPLETED, FAILED, REFUNDED;
 
