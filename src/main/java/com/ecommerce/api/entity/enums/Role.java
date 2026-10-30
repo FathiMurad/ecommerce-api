@@ -5,10 +5,6 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
 
-/**
- * Access control roles assigned to system users.
- * Features resilient JSON serialization and case-insensitive deserialization.
- */
 public enum Role {
     ROLE_CUSTOMER, ROLE_ADMIN;
 
