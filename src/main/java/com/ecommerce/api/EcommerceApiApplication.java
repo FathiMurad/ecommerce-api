@@ -6,6 +6,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.util.TimeZone;
 
+/**
+ * Entry point for the E-Commerce RESTful API service, bootstrapping Spring context and enforcing UTC timezone.
+ */
 @SpringBootApplication
 public class EcommerceApiApplication {
 
