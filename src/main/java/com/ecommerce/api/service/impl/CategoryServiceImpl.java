@@ -4,8 +4,10 @@ import com.ecommerce.api.dto.request.CategoryRequest;
 import com.ecommerce.api.dto.response.CategoryResponse;
 import com.ecommerce.api.entity.Category;
 import com.ecommerce.api.exception.BadRequestException;
+import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.CategoryRepository;
+import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,11 +17,12 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Implementation of CategoryService providing transactional catalog category management,
- * uniqueness constraints, and foreign key deletion guards.
+ * Service implementation for managing product categories.
  */
 @Slf4j
 @Service
@@ -28,11 +31,19 @@ import java.util.List;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final ProductRepository productRepository;
 
     @Override
     @Cacheable(value = "categories", key = "'all'")
     public List<CategoryResponse> getAllCategories() {
-        return categoryRepository.findAll().stream().map(CategoryResponse::fromEntity).toList();
+        List<Category> categories = categoryRepository.findAll();
+        List<CategoryResponse> responses = new ArrayList<>();
+
+        for (Category category : categories) {
+            responses.add(CategoryResponse.fromEntity(category));
+        }
+
+        return responses;
     }
 
     @Override
@@ -41,7 +52,9 @@ public class CategoryServiceImpl implements CategoryService {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
-        return categoryRepository.findById(id).map(CategoryResponse::fromEntity).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+
+        Category category = findCategoryOrThrow(id);
+        return CategoryResponse.fromEntity(category);
     }
 
     @Override
@@ -54,7 +67,8 @@ public class CategoryServiceImpl implements CategoryService {
 
         String name = request.getName().trim();
         if (categoryRepository.existsByName(name)) {
-            throw new BadRequestException("Category with name '" + name + "' already exists.");
+            log.warn("Category creation rejected: Name '{}' already exists", name);
+            throw new ConflictException("Category with name '" + name + "' already exists.");
         }
 
         Category category = Category.builder().name(name).description(request.getDescription()).build();
@@ -76,14 +90,14 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalArgumentException("Category name is required.");
         }
 
-        Category category = categoryRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+        Category category = findCategoryOrThrow(id);
 
         String name = request.getName().trim();
-        categoryRepository.findByName(name).ifPresent(existing -> {
-            if (!existing.getId().equals(id)) {
-                throw new BadRequestException("Category with name '" + name + "' already exists.");
-            }
-        });
+        Optional<Category> existingCategory = categoryRepository.findByName(name);
+        if (existingCategory.isPresent() && !existingCategory.get().getId().equals(id)) {
+            log.warn("Category update rejected: Name '{}' already exists", name);
+            throw new ConflictException("Category with name '" + name + "' already exists.");
+        }
 
         category.setName(name);
         category.setDescription(request.getDescription());
@@ -102,13 +116,21 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
 
-        Category category = categoryRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+        Category category = findCategoryOrThrow(id);
 
-        if (category.getProducts() != null && !category.getProducts().isEmpty()) {
+        if (productRepository.existsByCategoryId(id)) {
             throw new BadRequestException("Cannot delete category '" + category.getName() + "' because it contains associated products. Reassign or delete products first.");
         }
 
         categoryRepository.delete(category);
         log.info("Deleted category id={} with name='{}'", id, category.getName());
+    }
+
+    private Category findCategoryOrThrow(Long id) {
+        Optional<Category> category = categoryRepository.findById(id);
+        if (category.isEmpty()) {
+            throw new ResourceNotFoundException("Category not found with id: " + id);
+        }
+        return category.get();
     }
 }
