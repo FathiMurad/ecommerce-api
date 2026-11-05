@@ -19,6 +19,9 @@ import lombok.Setter;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Represents a hierarchical product category within the catalog hierarchy.
+ */
 @Entity
 @Table(name = "categories")
 @Getter

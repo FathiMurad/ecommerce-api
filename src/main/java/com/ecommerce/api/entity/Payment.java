@@ -28,6 +28,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * Transaction processing record capturing gateway authorization, settlement method, and failure diagnostics.
+ */
 @Entity
 @Table(name = "payments", indexes = {@Index(name = "idx_payment_status", columnList = "status")})
 @Getter

@@ -32,6 +32,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Represents a finalized purchase contract containing tracking details, snapshot addresses, and lifecycle state.
+ */
 @Entity
 @Table(name = "orders", indexes = {@Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id"), @Index(name = "idx_order_status", columnList = "status")})
 @Getter

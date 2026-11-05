@@ -22,6 +22,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * Immutable historical record of a purchased product line item capturing price snapshot at checkout time.
+ */
 @Entity
 @Table(name = "order_items", indexes = {@Index(name = "idx_order_item_order", columnList = "order_id"), @Index(name = "idx_order_item_product", columnList = "product_id")})
 @Getter

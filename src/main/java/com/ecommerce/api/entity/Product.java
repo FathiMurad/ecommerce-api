@@ -26,6 +26,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Core catalog entity representing an item available for purchase, inventory tracking, and pricing.
+ */
 @Entity
 @Table(name = "products", indexes = {@Index(name = "idx_product_category", columnList = "category_id")})
 @Getter

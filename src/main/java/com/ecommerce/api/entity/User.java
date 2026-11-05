@@ -21,6 +21,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
+/**
+ * System identity entity representing customers and administrators with RBAC credentials and profile state.
+ */
 @Entity
 @Table(name = "users")
 @Getter
