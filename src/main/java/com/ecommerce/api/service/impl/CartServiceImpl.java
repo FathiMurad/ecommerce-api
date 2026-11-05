@@ -37,6 +37,7 @@ public class CartServiceImpl implements CartService {
     @Override
     public CartResponse getOrCreateCart(User user, String cartToken) {
         Cart cart = resolveCart(user, cartToken);
+
         return CartResponse.fromEntity(cart);
     }
 
@@ -137,6 +138,7 @@ public class CartServiceImpl implements CartService {
             if (hasGuestToken) {
                 mergeGuestCartIfExists(userCart, cartToken.trim());
             }
+
             return userCart;
         }
 
@@ -186,6 +188,7 @@ public class CartServiceImpl implements CartService {
             if (guestCart.getUser() == null) {
                 log.info("Claiming anonymous guest cart (token={}) for user id={}", guestCart.getCartToken(), user.getId());
                 guestCart.setUser(user);
+
                 return cartRepository.save(guestCart);
             }
         }
@@ -195,11 +198,13 @@ public class CartServiceImpl implements CartService {
 
     private Cart createNewUserCart(User user) {
         Cart newCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(user).items(new ArrayList<>()).build();
+
         return cartRepository.save(newCart);
     }
 
     private Cart createNewGuestCart() {
         Cart newGuestCart = Cart.builder().cartToken(UUID.randomUUID().toString()).items(new ArrayList<>()).build();
+
         return cartRepository.save(newGuestCart);
     }
 

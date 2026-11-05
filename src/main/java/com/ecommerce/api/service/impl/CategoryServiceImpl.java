@@ -54,6 +54,7 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         Category category = findCategoryOrThrow(id);
+
         return CategoryResponse.fromEntity(category);
     }
 
@@ -131,6 +132,7 @@ public class CategoryServiceImpl implements CategoryService {
         if (category.isEmpty()) {
             throw new ResourceNotFoundException("Category not found with id: " + id);
         }
+
         return category.get();
     }
 }

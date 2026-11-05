@@ -55,6 +55,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             log.info("Registered new user id={} with email={}", savedUser.getId(), savedUser.getEmail());
             SecurityUser securityUser = new SecurityUser(savedUser);
             String token = jwtService.generateToken(securityUser);
+
             return new AuthenticationResponse(token);
         } catch (DataIntegrityViolationException ex) {
             log.warn("Concurrent duplicate registration collision on email");
