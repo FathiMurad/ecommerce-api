@@ -13,6 +13,9 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
+/**
+ * Repository for products, handling stock locks and catalog queries.
+ */
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Override
@@ -24,15 +27,13 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 
     /**
-     * Fetches a product alongside all associated images in a single SQL query
-     * to eliminate N+1 lazy-loading performance overhead.
+     * Loads a product with its images in one query to avoid N+1 issues.
      */
     @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.images WHERE p.id = :id")
     Optional<Product> findByIdWithImages(@Param("id") Long id);
 
     /**
-     * Acquires a row-level pessimistic write lock (SELECT ... FOR UPDATE) on the product record.
-     * Guarantees atomic stock check and deduction under concurrent checkout operations.
+     * Locks the product row in the database so other threads cannot change stock at the same time.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Product p WHERE p.id = :id")

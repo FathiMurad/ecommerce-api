@@ -9,13 +9,15 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
+/**
+ * Repository for managing customer orders and history.
+ */
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByTrackingNumber(String trackingNumber);
 
     /**
-     * Fetches an order alongside its line items and associated products in a single SQL query
-     * to eliminate N+1 query overhead during order detail presentation.
+     * Loads an order with its items and products in one query to avoid N+1 issues.
      */
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.trackingNumber = :trackingNumber")
     Optional<Order> findByTrackingNumberWithItems(@Param("trackingNumber") String trackingNumber);
