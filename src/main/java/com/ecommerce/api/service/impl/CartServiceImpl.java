@@ -23,8 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implementation of CartService providing transactional shopping cart operations
- * supporting authenticated user carts, guest session fallback, and atomic cart merging.
+ * Service implementation for managing shopping carts.
  */
 @Slf4j
 @Service
@@ -43,6 +42,9 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public CartResponse addToCart(User user, String cartToken, AddToCartRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Add to cart request cannot be null.");
+        }
         if (request.productId() == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
@@ -51,16 +53,10 @@ public class CartServiceImpl implements CartService {
         }
 
         Cart cart = resolveCart(user, cartToken);
+        Product product = findProductWithImagesOrThrow(request.productId());
 
-        Product product = productRepository.findByIdWithImages(request.productId()).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.productId()));
-
-        int existingQuantity = 0;
-        for (CartItem item : cart.getItems()) {
-            if (item.getProduct().getId().equals(product.getId())) {
-                existingQuantity = item.getQuantity();
-                break;
-            }
-        }
+        CartItem existingItem = findCartItem(cart, product.getId());
+        int existingQuantity = existingItem != null ? existingItem.getQuantity() : 0;
 
         int targetQuantity = existingQuantity + request.quantity();
         if (targetQuantity > product.getStockQuantity()) {
@@ -69,6 +65,7 @@ public class CartServiceImpl implements CartService {
 
         cart.addProduct(product, request.quantity());
         Cart savedCart = cartRepository.save(cart);
+        log.info("Added product id={} quantity={} to cart id={}", product.getId(), request.quantity(), savedCart.getId());
 
         return CartResponse.fromEntity(savedCart);
     }
@@ -78,23 +75,25 @@ public class CartServiceImpl implements CartService {
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
+        if (request == null) {
+            throw new IllegalArgumentException("Update cart item request cannot be null.");
+        }
+        // Setting quantity to zero or less automatically removes the item from the cart
         if (request.quantity() == null || request.quantity() <= 0) {
             return removeCartItem(user, cartToken, productId);
         }
 
         Cart cart = resolveCart(user, cartToken);
+        CartItem targetItem = findCartItemOrThrow(cart, productId);
 
-        CartItem targetItem = cart.getItems().stream().filter(item -> item.getProduct().getId().equals(productId)).findFirst().orElseThrow(() -> new ResourceNotFoundException("Item with product id " + productId + " not found in cart."));
-
-        // Fetch fresh product state to validate against actual current inventory
-        Product product = productRepository.findById(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
+        Product product = findProductOrThrow(productId);
         if (request.quantity() > product.getStockQuantity()) {
             throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Requested: " + request.quantity() + ", Available: " + product.getStockQuantity());
         }
 
         targetItem.setQuantity(request.quantity());
         Cart savedCart = cartRepository.save(cart);
+        log.info("Updated product id={} quantity to {} in cart id={}", productId, request.quantity(), savedCart.getId());
 
         return CartResponse.fromEntity(savedCart);
     }
@@ -104,9 +103,12 @@ public class CartServiceImpl implements CartService {
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
+
         Cart cart = resolveCart(user, cartToken);
         cart.removeProduct(productId);
         Cart savedCart = cartRepository.save(cart);
+        log.info("Removed product id={} from cart id={}", productId, savedCart.getId());
+
         return CartResponse.fromEntity(savedCart);
     }
 
@@ -115,60 +117,46 @@ public class CartServiceImpl implements CartService {
         Cart cart = resolveCart(user, cartToken);
         cart.clear();
         cartRepository.save(cart);
+        log.info("Cleared cart id={}", cart.getId());
     }
 
-    /**
-     * Resolves the cart prioritizing the authenticated user.
-     * Merges guest cart items into the user's existing cart, claims an anonymous cart
-     * if the user does not have one, or creates a fresh session cart.
-     */
     private Cart resolveCart(User user, String cartToken) {
         if (user != null) {
-            Optional<Cart> userCartOpt = cartRepository.findByUserIdWithItems(user.getId());
-            boolean hasGuestToken = cartToken != null && !cartToken.trim().isEmpty();
-
-            if (userCartOpt.isPresent()) {
-                Cart userCart = userCartOpt.get();
-                if (hasGuestToken) {
-                    Optional<Cart> guestCartOpt = cartRepository.findByCartTokenWithItems(cartToken.trim());
-                    if (guestCartOpt.isPresent()) {
-                        Cart guestCart = guestCartOpt.get();
-                        // Merge only if guest cart is anonymous and separate from the user cart
-                        if (guestCart.getUser() == null && !guestCart.getId().equals(userCart.getId())) {
-                            log.info("Merging guest cart (token={}) into user cart (id={}) for user id={}", guestCart.getCartToken(), userCart.getId(), user.getId());
-                            mergeGuestCartIntoUserCart(userCart, guestCart);
-                            return cartRepository.save(userCart);
-                        }
-                    }
-                }
-                return userCart;
-            }
-
-            // User has no cart yet. Claim the guest cart if valid and anonymous
-            if (hasGuestToken) {
-                Optional<Cart> guestCartOpt = cartRepository.findByCartTokenWithItems(cartToken.trim());
-                if (guestCartOpt.isPresent()) {
-                    Cart guestCart = guestCartOpt.get();
-                    if (guestCart.getUser() == null) {
-                        log.info("Claiming anonymous guest cart (token={}) for user id={}", guestCart.getCartToken(), user.getId());
-                        guestCart.setUser(user);
-                        return cartRepository.save(guestCart);
-                    }
-                }
-            }
-
-            // Create a brand new cart assigned directly to the authenticated user
-            Cart newCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(user).items(new ArrayList<>()).build();
-
-            return cartRepository.save(newCart);
+            return resolveUserCart(user, cartToken);
         }
 
-        // Guest session fallback
+        return resolveGuestCart(cartToken);
+    }
+
+    private Cart resolveUserCart(User user, String cartToken) {
+        Optional<Cart> userCartOpt = cartRepository.findByUserIdWithItems(user.getId());
+        boolean hasGuestToken = cartToken != null && !cartToken.trim().isEmpty();
+
+        if (userCartOpt.isPresent()) {
+            Cart userCart = userCartOpt.get();
+            if (hasGuestToken) {
+                mergeGuestCartIfExists(userCart, cartToken.trim());
+            }
+            return userCart;
+        }
+
+        // Claim existing guest session items instead of creating a brand new empty cart
+        if (hasGuestToken) {
+            Cart claimedCart = claimGuestCartIfExists(user, cartToken.trim());
+            if (claimedCart != null) {
+                return claimedCart;
+            }
+        }
+
+        return createNewUserCart(user);
+    }
+
+    private Cart resolveGuestCart(String cartToken) {
         if (cartToken != null && !cartToken.trim().isEmpty()) {
             Optional<Cart> existingCart = cartRepository.findByCartTokenWithItems(cartToken.trim());
             if (existingCart.isPresent()) {
                 Cart cart = existingCart.get();
-                // Security check: Never allow an unauthenticated guest to hijack a registered user's cart
+                // Security guard: Prevent unauthenticated guests from hijacking registered user carts
                 if (cart.getUser() == null) {
                     return cart;
                 }
@@ -176,26 +164,55 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        Cart newGuestCart = Cart.builder().cartToken(UUID.randomUUID().toString()).items(new ArrayList<>()).build();
+        return createNewGuestCart();
+    }
 
+    private void mergeGuestCartIfExists(Cart userCart, String guestCartToken) {
+        Optional<Cart> guestCartOpt = cartRepository.findByCartTokenWithItems(guestCartToken);
+        if (guestCartOpt.isPresent()) {
+            Cart guestCart = guestCartOpt.get();
+            if (guestCart.getUser() == null && !guestCart.getId().equals(userCart.getId())) {
+                log.info("Merging guest cart (token={}) into user cart (id={}) for user id={}", guestCart.getCartToken(), userCart.getId(), userCart.getUser().getId());
+                mergeGuestCartIntoUserCart(userCart, guestCart);
+                cartRepository.save(userCart);
+            }
+        }
+    }
+
+    private Cart claimGuestCartIfExists(User user, String guestCartToken) {
+        Optional<Cart> guestCartOpt = cartRepository.findByCartTokenWithItems(guestCartToken);
+        if (guestCartOpt.isPresent()) {
+            Cart guestCart = guestCartOpt.get();
+            if (guestCart.getUser() == null) {
+                log.info("Claiming anonymous guest cart (token={}) for user id={}", guestCart.getCartToken(), user.getId());
+                guestCart.setUser(user);
+                return cartRepository.save(guestCart);
+            }
+        }
+
+        return null;
+    }
+
+    private Cart createNewUserCart(User user) {
+        Cart newCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(user).items(new ArrayList<>()).build();
+        return cartRepository.save(newCart);
+    }
+
+    private Cart createNewGuestCart() {
+        Cart newGuestCart = Cart.builder().cartToken(UUID.randomUUID().toString()).items(new ArrayList<>()).build();
         return cartRepository.save(newGuestCart);
     }
 
-    /**
-     * Merges all items from an anonymous guest cart into an authenticated user's cart,
-     * respecting available inventory, and deletes the guest cart.
-     */
     private void mergeGuestCartIntoUserCart(Cart userCart, Cart guestCart) {
         List<CartItem> guestItems = new ArrayList<>(guestCart.getItems());
         for (CartItem guestItem : guestItems) {
             Product product = guestItem.getProduct();
             int guestQty = guestItem.getQuantity();
 
-            Optional<CartItem> existingItemOpt = userCart.getItems().stream().filter(item -> item.getProduct().getId().equals(product.getId())).findFirst();
-
-            if (existingItemOpt.isPresent()) {
-                CartItem existingItem = existingItemOpt.get();
+            CartItem existingItem = findCartItem(userCart, product.getId());
+            if (existingItem != null) {
                 int totalQty = existingItem.getQuantity() + guestQty;
+                // Cap merged quantity to available warehouse stock to prevent overflow
                 int finalQty = Math.min(totalQty, product.getStockQuantity());
                 existingItem.setQuantity(finalQty);
             } else {
@@ -206,6 +223,44 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        // Delete guest cart after its items have been merged into the user cart
         cartRepository.delete(guestCart);
+    }
+
+    private CartItem findCartItem(Cart cart, Long productId) {
+        for (CartItem item : cart.getItems()) {
+            if (item.getProduct().getId().equals(productId)) {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private CartItem findCartItemOrThrow(Cart cart, Long productId) {
+        CartItem item = findCartItem(cart, productId);
+        if (item == null) {
+            throw new ResourceNotFoundException("Item with product id " + productId + " not found in cart.");
+        }
+
+        return item;
+    }
+
+    private Product findProductOrThrow(Long id) {
+        Optional<Product> product = productRepository.findById(id);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + id);
+        }
+
+        return product.get();
+    }
+
+    private Product findProductWithImagesOrThrow(Long id) {
+        Optional<Product> product = productRepository.findByIdWithImages(id);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + id);
+        }
+
+        return product.get();
     }
 }
