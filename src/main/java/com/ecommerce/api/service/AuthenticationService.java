@@ -9,13 +9,7 @@ import com.ecommerce.api.dto.response.AuthenticationResponse;
  */
 public interface AuthenticationService {
 
-    /**
-     * Registers a new user and returns a token.
-     */
     AuthenticationResponse register(RegisterRequest request);
 
-    /**
-     * Logs in a user and returns a token.
-     */
     AuthenticationResponse authenticate(LoginRequest request);
 }
