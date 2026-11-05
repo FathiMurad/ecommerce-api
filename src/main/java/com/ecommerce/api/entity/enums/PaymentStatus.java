@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
 
+/**
+ * Represents the settlement and authorization states of a transaction processing attempt.
+ */
 public enum PaymentStatus {
     PENDING, COMPLETED, FAILED, REFUNDED;
 

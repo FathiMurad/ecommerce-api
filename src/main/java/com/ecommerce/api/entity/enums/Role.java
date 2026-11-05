@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
 
+/**
+ * Defines system authority boundaries and role-based access control (RBAC) levels for users.
+ */
 public enum Role {
     ROLE_CUSTOMER, ROLE_ADMIN;
 

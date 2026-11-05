@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
 
+/**
+ * Supported payment channels and mechanisms for settling customer order transactions.
+ */
 public enum PaymentMethod {
     CREDIT_CARD, DEBIT_CARD, PAYPAL, CASH_ON_DELIVERY;
 
