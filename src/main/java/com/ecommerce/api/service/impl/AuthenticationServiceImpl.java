@@ -20,9 +20,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service implementation for user login and registration.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AuthenticationServiceImpl implements AuthenticationService {
 
     private final UserRepository userRepository;
@@ -33,6 +37,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
+        if (request == null || request.getEmail() == null || request.getPassword() == null) {
+            throw new IllegalArgumentException("Registration details cannot be null.");
+        }
+
         String normalizedEmail = request.getEmail().trim().toLowerCase();
 
         if (userRepository.existsByEmail(normalizedEmail)) {
@@ -40,7 +48,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new ConflictException("Registration could not be completed with the provided details.");
         }
 
-        User user = User.builder().firstName(request.getFirstName().trim()).lastName(request.getLastName().trim()).email(normalizedEmail).password(passwordEncoder.encode(request.getPassword())).role(Role.ROLE_CUSTOMER).isActive(true).build();
+        User user = User.builder().firstName(request.getFirstName() != null ? request.getFirstName().trim() : "").lastName(request.getLastName() != null ? request.getLastName().trim() : "").email(normalizedEmail).password(passwordEncoder.encode(request.getPassword())).role(Role.ROLE_CUSTOMER).isActive(true).build();
 
         try {
             User savedUser = userRepository.save(user);
@@ -55,8 +63,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public AuthenticationResponse authenticate(LoginRequest request) {
+        if (request == null || request.getEmail() == null || request.getPassword() == null) {
+            throw new IllegalArgumentException("Login credentials cannot be null.");
+        }
+
         String normalizedEmail = request.getEmail().trim().toLowerCase();
 
         Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
