@@ -33,8 +33,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@RestControllerAdvice
 @SuppressWarnings("unused")
+@RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -85,10 +85,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
-    @ExceptionHandler({MissingServletRequestParameterException.class, MissingRequestHeaderException.class, InvalidDataAccessApiUsageException.class, IllegalArgumentException.class})
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
+        log.warn("Illegal argument rejected: {}", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler({MissingServletRequestParameterException.class, MissingRequestHeaderException.class, InvalidDataAccessApiUsageException.class})
     public ResponseEntity<ErrorResponse> handleBadRequestParams(Exception ex) {
         log.warn("Invalid request parameters or sorting arguments: {}", ex.getMessage());
-        String clientMessage = (ex instanceof InvalidDataAccessApiUsageException || ex instanceof IllegalArgumentException) ? "Invalid sort parameter or query field specified." : "Required request parameter or header is missing.";
+        String clientMessage = (ex instanceof InvalidDataAccessApiUsageException) ? "Invalid sort parameter or query field specified." : "Required request parameter or header is missing.";
         return buildResponse(HttpStatus.BAD_REQUEST, clientMessage);
     }
 
@@ -108,7 +114,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
         log.warn("Malformed HTTP request body: {}", ex.getMessage());
-        return buildResponse(HttpStatus.BAD_REQUEST, "Malformed JSON request body or invalid field format.");
+
+        // אם מקור החריגה הוא IllegalArgumentException (למשל מ-Enum שקיבל ערך לא תקין), נחשוף את ההודעה המדויקת
+        Throwable rootCause = ex.getMostSpecificCause();
+        String message = (rootCause instanceof IllegalArgumentException) ? rootCause.getMessage() : "Malformed JSON request body or invalid field format.";
+
+        return buildResponse(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
