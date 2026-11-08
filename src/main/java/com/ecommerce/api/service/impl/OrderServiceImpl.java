@@ -38,8 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implementation of OrderService providing atomic checkout execution,
- * stock synchronization, and strict order lifecycle management.
+ * Service implementation for managing orders and checkout operations.
  */
 @Slf4j
 @Service
@@ -56,8 +55,11 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @CacheEvict(value = "products", allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
-        Cart cart = resolveCartForCheckout(user, cartToken);
+        if (request == null) {
+            throw new IllegalArgumentException("Checkout request cannot be null.");
+        }
 
+        Cart cart = resolveCartForCheckout(user, cartToken);
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new EmptyCartException("Cannot checkout with an empty cart.");
         }
@@ -65,40 +67,10 @@ public class OrderServiceImpl implements OrderService {
         String customerEmail = resolveCustomerEmail(user, request);
         String customerName = resolveCustomerName(user, request);
         String shippingAddress = resolveShippingAddress(request);
+        validateCustomerDetails(customerEmail, customerName, shippingAddress);
 
-        if (customerEmail == null || customerEmail.isEmpty()) {
-            throw new IllegalArgumentException("Customer email is required for checkout.");
-        }
-        if (customerName == null || customerName.isEmpty()) {
-            throw new IllegalArgumentException("Customer name is required for checkout.");
-        }
-        if (shippingAddress == null || shippingAddress.isEmpty()) {
-            throw new IllegalArgumentException("Shipping address is required for checkout.");
-        }
-
-        String trackingNumber = generateUniqueTrackingNumber();
-
-        // New checkout order is created with PENDING status awaiting payment settlement
-        Order order = Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
-
-        // Sort cart items by Product ID ascending to guarantee deterministic lock acquisition order and prevent deadlocks
-        List<CartItem> sortedItems = cart.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
-
-        for (CartItem cartItem : sortedItems) {
-            Long productId = cartItem.getProduct().getId();
-            Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
-            if (product.getStockQuantity() < cartItem.getQuantity()) {
-                throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Available: " + product.getStockQuantity() + ", Requested: " + cartItem.getQuantity());
-            }
-
-            product.setStockQuantity(product.getStockQuantity() - cartItem.getQuantity());
-            productRepository.save(product);
-
-            OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
-
-            order.addItem(orderItem);
-        }
+        Order order = buildInitialOrder(user, customerName, customerEmail, shippingAddress);
+        deductStockAndCreateOrderItems(order, cart);
 
         order.setTotalAmount(order.calculateTotalAmount().setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP));
         Order savedOrder = orderRepository.save(order);
@@ -106,13 +78,7 @@ public class OrderServiceImpl implements OrderService {
         cart.clear();
         cartRepository.save(cart);
 
-        log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getTotalAmount(), savedOrder.getStatus());
-
-        // Increment business metric counter
-        meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment();
-
-        // Publish domain event to decouple asynchronous post-commit side effects
-        eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getId(), savedOrder.getTrackingNumber(), savedOrder.getCustomerEmail(), savedOrder.getCustomerName(), savedOrder.getTotalAmount()));
+        notifyOrderPlaced(savedOrder);
 
         return OrderResponse.fromEntity(savedOrder);
     }
@@ -123,7 +89,9 @@ public class OrderServiceImpl implements OrderService {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
         }
-        Order order = orderRepository.findByTrackingNumberWithItems(trackingNumber.trim()).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
+
+        Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
+
         return OrderResponse.fromEntity(order);
     }
 
@@ -133,8 +101,12 @@ public class OrderServiceImpl implements OrderService {
         if (customerEmail == null || customerEmail.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer email cannot be null or empty.");
         }
+
         Page<Order> orderPage = orderRepository.findByCustomerEmail(customerEmail.trim(), pageable);
-        List<OrderResponse> content = orderPage.getContent().stream().map(OrderResponse::fromEntity).toList();
+        List<OrderResponse> content = new ArrayList<>();
+        for (Order order : orderPage.getContent()) {
+            content.add(OrderResponse.fromEntity(order));
+        }
 
         return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
     }
@@ -145,8 +117,12 @@ public class OrderServiceImpl implements OrderService {
         if (user == null || user.getId() == null) {
             throw new IllegalArgumentException("User cannot be null when fetching order history.");
         }
+
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), pageable);
-        List<OrderResponse> content = orderPage.getContent().stream().map(OrderResponse::fromEntity).toList();
+        List<OrderResponse> content = new ArrayList<>();
+        for (Order order : orderPage.getContent()) {
+            content.add(OrderResponse.fromEntity(order));
+        }
 
         return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
     }
@@ -161,21 +137,17 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("New status cannot be null.");
         }
 
-        Order order = orderRepository.findByTrackingNumberWithItems(trackingNumber.trim()).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
-
+        Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
         OrderStatus currentStatus = order.getStatus();
 
-        // 1. Validation: No action needed if status is unchanged
         if (currentStatus == newStatus) {
             return OrderResponse.fromEntity(order);
         }
 
-        // 2. Validation: Terminal states cannot transition
         if (currentStatus == OrderStatus.DELIVERED || currentStatus == OrderStatus.CANCELLED) {
             throw new BadRequestException("Cannot modify an order already in terminal status: " + currentStatus);
         }
 
-        // 3. State Machine transitions
         switch (newStatus) {
             case CONFIRMED -> {
                 if (currentStatus != OrderStatus.PENDING) {
@@ -198,25 +170,104 @@ public class OrderServiceImpl implements OrderService {
                     throw new BadRequestException("Only PENDING or CONFIRMED orders can be cancelled. Current status: " + currentStatus);
                 }
                 meterRegistry.counter("ecommerce.orders.cancelled").increment();
-                // Return stock back to inventory deterministically using pessimistic lock
-                List<OrderItem> sortedOrderItems = order.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
-
-                for (OrderItem item : sortedOrderItems) {
-                    Long productId = item.getProduct().getId();
-                    Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-                    product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-                    productRepository.save(product);
-                }
+                restoreStockForOrder(order);
             }
             default -> throw new BadRequestException("Unsupported status transition to: " + newStatus);
         }
 
         order.setStatus(newStatus);
         Order updatedOrder = orderRepository.save(order);
-
         log.info("Order status updated for trackingNumber={}: {} -> {}", trackingNumber, currentStatus, newStatus);
 
         return OrderResponse.fromEntity(updatedOrder);
+    }
+
+    private void validateCustomerDetails(String customerEmail, String customerName, String shippingAddress) {
+        if (customerEmail == null || customerEmail.isEmpty()) {
+            throw new IllegalArgumentException("Customer email is required for checkout.");
+        }
+        if (customerName == null || customerName.isEmpty()) {
+            throw new IllegalArgumentException("Customer name is required for checkout.");
+        }
+        if (shippingAddress == null || shippingAddress.isEmpty()) {
+            throw new IllegalArgumentException("Shipping address is required for checkout.");
+        }
+    }
+
+    private Order buildInitialOrder(User user, String customerName, String customerEmail, String shippingAddress) {
+        String trackingNumber = generateUniqueTrackingNumber();
+
+        return Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
+    }
+
+    private void deductStockAndCreateOrderItems(Order order, Cart cart) {
+        List<CartItem> sortedItems = sortCartItemsByProductId(cart.getItems());
+
+        for (CartItem cartItem : sortedItems) {
+            Long productId = cartItem.getProduct().getId();
+            Product product = findProductWithLockOrThrow(productId);
+
+            if (product.getStockQuantity() < cartItem.getQuantity()) {
+                throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Available: " + product.getStockQuantity() + ", Requested: " + cartItem.getQuantity());
+            }
+
+            product.setStockQuantity(product.getStockQuantity() - cartItem.getQuantity());
+            productRepository.save(product);
+
+            OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
+
+            order.addItem(orderItem);
+        }
+    }
+
+    private void notifyOrderPlaced(Order order) {
+        log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", order.getTrackingNumber(), order.getCustomerEmail(), order.getTotalAmount(), order.getStatus());
+
+        meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment();
+
+        eventPublisher.publishEvent(new OrderPlacedEvent(order.getId(), order.getTrackingNumber(), order.getCustomerEmail(), order.getCustomerName(), order.getTotalAmount()));
+    }
+
+    private void restoreStockForOrder(Order order) {
+        List<OrderItem> sortedOrderItems = sortOrderItemsByProductId(order.getItems());
+        for (OrderItem item : sortedOrderItems) {
+            Long productId = item.getProduct().getId();
+            Product product = findProductWithLockOrThrow(productId);
+            product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+            productRepository.save(product);
+        }
+    }
+
+    private List<CartItem> sortCartItemsByProductId(List<CartItem> items) {
+        List<CartItem> sortedItems = new ArrayList<>(items);
+        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
+
+        return sortedItems;
+    }
+
+    private List<OrderItem> sortOrderItemsByProductId(List<OrderItem> items) {
+        List<OrderItem> sortedItems = new ArrayList<>(items);
+        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
+
+        return sortedItems;
+    }
+
+    private Order findOrderByTrackingNumberOrThrow(String trackingNumber) {
+        Optional<Order> order = orderRepository.findByTrackingNumberWithItems(trackingNumber);
+        if (order.isEmpty()) {
+            throw new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber);
+        }
+
+        return order.get();
+    }
+
+    private Product findProductWithLockOrThrow(Long productId) {
+        Optional<Product> product = productRepository.findByIdWithPessimisticLock(productId);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
+
+        return product.get();
     }
 
     private Cart resolveCartForCheckout(User user, String cartToken) {
@@ -240,7 +291,6 @@ public class OrderServiceImpl implements OrderService {
             throw new ResourceNotFoundException("No active shopping cart found for user.");
         }
 
-        // Guest checkout
         if (cartToken != null && !cartToken.trim().isEmpty()) {
             Optional<Cart> tokenCart = cartRepository.findByCartTokenWithItems(cartToken.trim());
             if (tokenCart.isPresent()) {
@@ -263,6 +313,7 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.customerEmail() != null && !request.customerEmail().trim().isEmpty()) {
             return request.customerEmail().trim();
         }
+
         return null;
     }
 
@@ -278,6 +329,7 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.customerName() != null && !request.customerName().trim().isEmpty()) {
             return request.customerName().trim();
         }
+
         return null;
     }
 
@@ -285,6 +337,7 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.shippingAddress() != null && !request.shippingAddress().trim().isEmpty()) {
             return request.shippingAddress().trim();
         }
+
         return null;
     }
 
@@ -293,6 +346,7 @@ public class OrderServiceImpl implements OrderService {
         do {
             trackingNumber = "ORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
         } while (orderRepository.findByTrackingNumber(trackingNumber).isPresent());
+
         return trackingNumber;
     }
 }
