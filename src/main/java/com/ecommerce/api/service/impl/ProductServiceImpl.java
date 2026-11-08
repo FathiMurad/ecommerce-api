@@ -21,12 +21,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
- * Implementation of ProductService providing transactional catalog product operations,
- * safe pagination sanitization, and synchronized image management.
+ * Service implementation for managing catalog products and inventory.
  */
 @Slf4j
 @Service
@@ -46,7 +47,10 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findAll(pageable);
 
-        List<ProductResponse> content = productPage.getContent().stream().map(ProductResponse::fromEntity).toList();
+        List<ProductResponse> content = new ArrayList<>();
+        for (Product product : productPage.getContent()) {
+            content.add(ProductResponse.fromEntity(product));
+        }
 
         return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
     }
@@ -57,7 +61,8 @@ public class ProductServiceImpl implements ProductService {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
-        Product product = productRepository.findByIdWithImages(id).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
+
+        Product product = findProductWithImagesOrThrow(id);
 
         return ProductResponse.fromEntity(product);
     }
@@ -74,7 +79,10 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findByCategoryId(categoryId, pageable);
 
-        List<ProductResponse> content = productPage.getContent().stream().map(ProductResponse::fromEntity).toList();
+        List<ProductResponse> content = new ArrayList<>();
+        for (Product product : productPage.getContent()) {
+            content.add(ProductResponse.fromEntity(product));
+        }
 
         return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
     }
@@ -89,18 +97,11 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
 
-        Category category = categoryRepository.findById(request.getCategoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+        Category category = findCategoryByIdOrThrow(request.getCategoryId());
 
         Product product = Product.builder().name(request.getName() != null ? request.getName().trim() : null).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
 
-        if (request.getImageUrls() != null && !request.getImageUrls().isEmpty()) {
-            for (int i = 0; i < request.getImageUrls().size(); i++) {
-                String imageUrl = request.getImageUrls().get(i);
-                if (imageUrl != null && !imageUrl.trim().isEmpty()) {
-                    product.addImage(ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(i == 0).displayOrder(i).build());
-                }
-            }
-        }
+        attachProductImages(product, request.getImageUrls());
 
         Product savedProduct = productRepository.save(product);
         log.info("Created product id={} with name='{}'", savedProduct.getId(), savedProduct.getName());
@@ -122,9 +123,8 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
 
-        Product product = productRepository.findByIdWithImages(id).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-
-        Category category = categoryRepository.findById(request.getCategoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+        Product product = findProductWithImagesOrThrow(id);
+        Category category = findCategoryByIdOrThrow(request.getCategoryId());
 
         product.setName(request.getName() != null ? request.getName().trim() : product.getName());
         product.setDescription(request.getDescription());
@@ -134,12 +134,7 @@ public class ProductServiceImpl implements ProductService {
 
         if (request.getImageUrls() != null) {
             product.getImages().clear();
-            for (int i = 0; i < request.getImageUrls().size(); i++) {
-                String imageUrl = request.getImageUrls().get(i);
-                if (imageUrl != null && !imageUrl.trim().isEmpty()) {
-                    product.addImage(ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(i == 0).displayOrder(i).build());
-                }
-            }
+            attachProductImages(product, request.getImageUrls());
         }
 
         Product updatedProduct = productRepository.save(product);
@@ -155,24 +150,62 @@ public class ProductServiceImpl implements ProductService {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
-        Product product = productRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
+
+        Product product = findProductByIdOrThrow(id);
 
         productRepository.delete(product);
         log.info("Deleted product id={} with name='{}'", id, product.getName());
     }
 
-    /**
-     * Sanitizes pagination parameters and sort properties against an allowed whitelist
-     * to eliminate SQL sort injection and DoS memory exhaustion risks.
-     */
+    private void attachProductImages(Product product, List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return;
+        }
+
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String imageUrl = imageUrls.get(i);
+            if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                ProductImage image = ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(i == 0).displayOrder(i).build();
+
+                product.addImage(image);
+            }
+        }
+    }
+
     private Pageable createSafePageable(int page, int size, String sortBy, String sortDirection) {
         int safePage = Math.max(page, 0);
         int safeSize = (size <= 0) ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
 
         String property = (sortBy != null && ALLOWED_SORT_PROPERTIES.contains(sortBy.trim())) ? sortBy.trim() : "id";
-
         Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
 
         return PageRequest.of(safePage, safeSize, Sort.by(direction, property));
+    }
+
+    private Product findProductWithImagesOrThrow(Long id) {
+        Optional<Product> product = productRepository.findByIdWithImages(id);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + id);
+        }
+
+        return product.get();
+    }
+
+    private Product findProductByIdOrThrow(Long id) {
+        Optional<Product> product = productRepository.findById(id);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + id);
+        }
+
+        return product.get();
+    }
+
+    private Category findCategoryByIdOrThrow(Long categoryId) {
+        Optional<Category> category = categoryRepository.findById(categoryId);
+        if (category.isEmpty()) {
+            throw new ResourceNotFoundException("Category not found with id: " + categoryId);
+        }
+
+        return category.get();
     }
 }
