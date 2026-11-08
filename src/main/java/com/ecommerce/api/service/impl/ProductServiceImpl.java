@@ -47,12 +47,7 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findAll(pageable);
 
-        List<ProductResponse> content = new ArrayList<>();
-        for (Product product : productPage.getContent()) {
-            content.add(ProductResponse.fromEntity(product));
-        }
-
-        return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
+        return mapToPagedResponse(productPage);
     }
 
     @Override
@@ -79,23 +74,13 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findByCategoryId(categoryId, pageable);
 
-        List<ProductResponse> content = new ArrayList<>();
-        for (Product product : productPage.getContent()) {
-            content.add(ProductResponse.fromEntity(product));
-        }
-
-        return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
+        return mapToPagedResponse(productPage);
     }
 
     @Override
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Product request cannot be null.");
-        }
-        if (request.getCategoryId() == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
+        validateProductRequest(request);
 
         Category category = findCategoryByIdOrThrow(request.getCategoryId());
 
@@ -116,12 +101,7 @@ public class ProductServiceImpl implements ProductService {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
-        if (request == null) {
-            throw new IllegalArgumentException("Product request cannot be null.");
-        }
-        if (request.getCategoryId() == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
+        validateProductRequest(request);
 
         Product product = findProductWithImagesOrThrow(id);
         Category category = findCategoryByIdOrThrow(request.getCategoryId());
@@ -155,6 +135,24 @@ public class ProductServiceImpl implements ProductService {
 
         productRepository.delete(product);
         log.info("Deleted product id={} with name='{}'", id, product.getName());
+    }
+
+    private void validateProductRequest(ProductRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Product request cannot be null.");
+        }
+        if (request.getCategoryId() == null) {
+            throw new IllegalArgumentException("Category ID cannot be null.");
+        }
+    }
+
+    private PagedResponse<ProductResponse> mapToPagedResponse(Page<Product> productPage) {
+        List<ProductResponse> content = new ArrayList<>();
+        for (Product product : productPage.getContent()) {
+            content.add(ProductResponse.fromEntity(product));
+        }
+
+        return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
     }
 
     private void attachProductImages(Product product, List<String> imageUrls) {
