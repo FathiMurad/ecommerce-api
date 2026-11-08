@@ -22,19 +22,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implementation of PaymentService providing idempotent payment execution,
- * stock restoration on failure, latency instrumentation, and role-aware order authorization.
+ * Service implementation for managing payment transactions.
  */
 @Slf4j
 @Service
@@ -57,62 +59,50 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalArgumentException("Payment request cannot be null.");
         }
 
-        Order order = orderRepository.findByTrackingNumberWithItems(trackingNumber.trim()).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
-
-        // Ownership verification (registered customer can only pay their own order; admin can pay any)
+        Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
         validateOrderAccess(order);
+        validateOrderPayable(order, request);
 
-        // State validation: only PENDING orders can be charged
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new BadRequestException("Cannot process payment for an order with status: " + order.getStatus());
-        }
-
-        // Validate amount precision and equality via compareTo if supplied in request
-        if (request.getAmount() != null) {
-            if (request.getAmount().compareTo(order.getTotalAmount()) != 0) {
-                throw new BadRequestException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
-            }
-        }
-
-        // Idempotency check: Reuse existing record or verify not already completed
-        Payment payment = paymentRepository.findByOrderId(order.getId()).orElseGet(() -> Payment.builder().order(order).build());
-
+        Payment payment = resolvePayment(order);
         if (payment.getStatus() == PaymentStatus.COMPLETED) {
             throw new BadRequestException("Order is already paid with transaction ID: " + payment.getTransactionId());
         }
 
-        // Instrument payment latency and outcomes via Micrometer
         Timer.Sample sample = Timer.start(meterRegistry);
-
-        // Simulate Gateway: Card ending in "0000" triggers simulated failure; safely handle null card numbers
-        boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
         String transactionId = generateUniqueTransactionId();
-
         BigDecimal chargeAmount = (request.getAmount() != null ? request.getAmount() : order.getTotalAmount()).setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP);
 
         payment.setTransactionId(transactionId);
         payment.setAmount(chargeAmount);
         payment.setPaymentMethod(request.getPaymentMethod());
 
+        boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
         if (isDeclined) {
-            payment.setStatus(PaymentStatus.FAILED);
-            payment.setFailureReason("Card declined by issuing bank (insufficient funds / test decline)");
-            order.setStatus(OrderStatus.CANCELLED);
-
-            // Rollback reserved stock
-            restoreInventory(order);
-
-            Payment savedPayment = paymentRepository.save(payment);
-            orderRepository.save(order);
-
-            sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "declined"));
-            meterRegistry.counter("ecommerce.payments.processed", "outcome", "declined").increment();
-
-            log.warn("Payment declined for trackingNumber={}, transactionId={}", trackingNumber, transactionId);
-            return PaymentResponse.fromEntity(savedPayment);
+            return handleDeclinedPayment(order, payment, trackingNumber, transactionId, sample);
         }
 
-        // Payment approved
+        return handleApprovedPayment(order, payment, trackingNumber, transactionId, sample);
+    }
+
+    private PaymentResponse handleDeclinedPayment(Order order, Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
+        payment.setStatus(PaymentStatus.FAILED);
+        payment.setFailureReason("Card declined by issuing bank (insufficient funds / test decline)");
+        order.setStatus(OrderStatus.CANCELLED);
+
+        restoreInventory(order);
+
+        Payment savedPayment = paymentRepository.save(payment);
+        orderRepository.save(order);
+
+        sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "declined"));
+        meterRegistry.counter("ecommerce.payments.processed", "outcome", "declined").increment();
+
+        log.warn("Payment declined for trackingNumber={}, transactionId={}", trackingNumber, transactionId);
+
+        return PaymentResponse.fromEntity(savedPayment);
+    }
+
+    private PaymentResponse handleApprovedPayment(Order order, Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
         payment.setStatus(PaymentStatus.COMPLETED);
         payment.setFailureReason(null);
         order.setStatus(OrderStatus.CONFIRMED);
@@ -128,39 +118,90 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentResponse.fromEntity(savedPayment);
     }
 
+    private void validateOrderPayable(Order order, PaymentRequest request) {
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new BadRequestException("Cannot process payment for an order with status: " + order.getStatus());
+        }
+
+        if (request.getAmount() != null) {
+            if (request.getAmount().compareTo(order.getTotalAmount()) != 0) {
+                throw new BadRequestException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
+            }
+        }
+    }
+
+    private Payment resolvePayment(Order order) {
+        Optional<Payment> payment = paymentRepository.findByOrderId(order.getId());
+        if (payment.isPresent()) {
+            return payment.get();
+        }
+
+        return Payment.builder().order(order).build();
+    }
+
     private void restoreInventory(Order order) {
-        if (order.getItems() == null) {
+        if (order.getItems() == null || order.getItems().isEmpty()) {
             return;
         }
 
-        List<OrderItem> sortedItems = order.getItems().stream().sorted(Comparator.comparing(item -> item.getProduct().getId())).toList();
-
+        List<OrderItem> sortedItems = sortOrderItemsByProductId(order.getItems());
         for (OrderItem item : sortedItems) {
             Long productId = item.getProduct().getId();
-            Product product = productRepository.findByIdWithPessimisticLock(productId).orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+            Product product = findProductWithLockOrThrow(productId);
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
         }
+    }
+
+    private List<OrderItem> sortOrderItemsByProductId(List<OrderItem> items) {
+        List<OrderItem> sortedItems = new ArrayList<>(items);
+        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
+
+        return sortedItems;
     }
 
     private void validateOrderAccess(Order order) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         boolean isAuthenticated = authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getName());
 
-        // If the order belongs to a registered user, enforce strict identity match or ADMIN role
         if (order.getUser() != null) {
             if (!isAuthenticated) {
                 throw new AccessDeniedException("Authentication required to pay for this registered user order.");
             }
 
             String currentUserEmail = authentication.getName();
-            boolean isAdmin = authentication.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            boolean isAdmin = false;
+            if (authentication.getAuthorities() != null) {
+                for (GrantedAuthority authority : authentication.getAuthorities()) {
+                    if ("ROLE_ADMIN".equals(authority.getAuthority())) {
+                        isAdmin = true;
+                        break;
+                    }
+                }
+            }
 
             if (!isAdmin && !currentUserEmail.equalsIgnoreCase(order.getUser().getEmail())) {
                 throw new AccessDeniedException("You are not authorized to pay for this order.");
             }
         }
-        // If order.getUser() == null, it is an anonymous guest checkout order and payment is permitted via trackingNumber
+    }
+
+    private Order findOrderByTrackingNumberOrThrow(String trackingNumber) {
+        Optional<Order> order = orderRepository.findByTrackingNumberWithItems(trackingNumber);
+        if (order.isEmpty()) {
+            throw new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber);
+        }
+
+        return order.get();
+    }
+
+    private Product findProductWithLockOrThrow(Long productId) {
+        Optional<Product> product = productRepository.findByIdWithPessimisticLock(productId);
+        if (product.isEmpty()) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
+
+        return product.get();
     }
 
     private String generateUniqueTransactionId() {
@@ -168,6 +209,7 @@ public class PaymentServiceImpl implements PaymentService {
         do {
             transactionId = "TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
         } while (paymentRepository.existsByTransactionId(transactionId));
+
         return transactionId;
     }
 }
