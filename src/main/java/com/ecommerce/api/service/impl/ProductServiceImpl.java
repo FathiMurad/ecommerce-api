@@ -38,6 +38,7 @@ public class ProductServiceImpl implements ProductService {
     private static final Set<String> ALLOWED_SORT_PROPERTIES = Set.of("id", "name", "price", "stockQuantity");
     private static final int DEFAULT_PAGE_SIZE = 10;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int PRIMARY_IMAGE_INDEX = 0;
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -163,7 +164,9 @@ public class ProductServiceImpl implements ProductService {
         for (int i = 0; i < imageUrls.size(); i++) {
             String imageUrl = imageUrls.get(i);
             if (imageUrl != null && !imageUrl.trim().isEmpty()) {
-                ProductImage image = ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(i == 0).displayOrder(i).build();
+                boolean isPrimary = (i == PRIMARY_IMAGE_INDEX);
+
+                ProductImage image = ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(isPrimary).displayOrder(i).build();
 
                 product.addImage(image);
             }
