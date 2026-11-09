@@ -37,11 +37,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
-        if (request == null || request.getEmail() == null || request.getPassword() == null) {
-            throw new IllegalArgumentException("Registration details cannot be null.");
-        }
+        validateRegisterRequest(request);
 
-        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        String normalizedEmail = normalizeEmail(request.getEmail());
 
         if (userRepository.existsByEmail(normalizedEmail)) {
             log.warn("Registration rejected: Duplicate email conflict for requested account");
@@ -51,8 +49,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         User user = User.builder().firstName(request.getFirstName() != null ? request.getFirstName().trim() : "").lastName(request.getLastName() != null ? request.getLastName().trim() : "").email(normalizedEmail).password(passwordEncoder.encode(request.getPassword())).role(Role.ROLE_CUSTOMER).isActive(true).build();
 
         try {
-            User savedUser = userRepository.save(user);
+            User savedUser = userRepository.saveAndFlush(user);
             log.info("Registered new user id={} with email={}", savedUser.getId(), savedUser.getEmail());
+
             SecurityUser securityUser = new SecurityUser(savedUser);
             String token = jwtService.generateToken(securityUser);
 
@@ -65,11 +64,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public AuthenticationResponse authenticate(LoginRequest request) {
-        if (request == null || request.getEmail() == null || request.getPassword() == null) {
-            throw new IllegalArgumentException("Login credentials cannot be null.");
-        }
+        validateLoginRequest(request);
 
-        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        String normalizedEmail = normalizeEmail(request.getEmail());
 
         Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
 
@@ -78,5 +75,33 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         log.info("User authenticated successfully: email={}", normalizedEmail);
 
         return new AuthenticationResponse(token);
+    }
+
+    private void validateRegisterRequest(RegisterRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Registration request cannot be null.");
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required.");
+        }
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw new IllegalArgumentException("Password is required.");
+        }
+    }
+
+    private void validateLoginRequest(LoginRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Login request cannot be null.");
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required.");
+        }
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw new IllegalArgumentException("Password is required.");
+        }
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase();
     }
 }
