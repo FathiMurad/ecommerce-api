@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.CacheNames;
 import com.ecommerce.api.dto.request.ProductRequest;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.dto.response.ProductResponse;
@@ -52,7 +53,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Cacheable(value = "products", key = "#id")
+    @Cacheable(value = CacheNames.PRODUCTS, key = "#id")
     public ProductResponse getProductById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -97,7 +98,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = CacheNames.PRODUCTS, key = "#id")
     public ProductResponse updateProduct(Long id, ProductRequest request) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -126,7 +127,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = CacheNames.PRODUCTS, key = "#id")
     public void deleteProduct(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");

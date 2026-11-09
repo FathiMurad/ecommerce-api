@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.CacheNames;
 import com.ecommerce.api.dto.request.CategoryRequest;
 import com.ecommerce.api.dto.response.CategoryResponse;
 import com.ecommerce.api.entity.Category;
@@ -34,7 +35,7 @@ public class CategoryServiceImpl implements CategoryService {
     private final ProductRepository productRepository;
 
     @Override
-    @Cacheable(value = "categories", key = "'all'")
+    @Cacheable(value = CacheNames.CATEGORIES, key = "'all'")
     public List<CategoryResponse> getAllCategories() {
         List<Category> categories = categoryRepository.findAll();
         List<CategoryResponse> responses = new ArrayList<>();
@@ -47,7 +48,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    @Cacheable(value = "categories", key = "#id")
+    @Cacheable(value = CacheNames.CATEGORIES, key = "#id")
     public CategoryResponse getCategoryById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
@@ -60,7 +61,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "categories", allEntries = true)
+    @CacheEvict(value = CacheNames.CATEGORIES, allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
         validateCategoryRequest(request);
 
@@ -80,7 +81,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
-    @Caching(evict = {@CacheEvict(value = "categories", allEntries = true), @CacheEvict(value = "products", allEntries = true)})
+    @Caching(evict = {@CacheEvict(value = CacheNames.CATEGORIES, allEntries = true), @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)})
     public CategoryResponse updateCategory(Long id, CategoryRequest request) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
@@ -107,7 +108,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "categories", allEntries = true)
+    @CacheEvict(value = CacheNames.CATEGORIES, allEntries = true)
     public void deleteCategory(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
