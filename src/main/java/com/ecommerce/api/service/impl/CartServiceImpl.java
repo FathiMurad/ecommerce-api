@@ -43,15 +43,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public CartResponse addToCart(User user, String cartToken, AddToCartRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Add to cart request cannot be null.");
-        }
-        if (request.productId() == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
-        if (request.quantity() == null || request.quantity() <= 0) {
-            throw new IllegalArgumentException("Quantity must be greater than zero.");
-        }
+        validateAddToCartRequest(request);
 
         Cart cart = resolveCart(user, cartToken);
         Product product = findProductWithImagesOrThrow(request.productId());
@@ -60,9 +52,7 @@ public class CartServiceImpl implements CartService {
         int existingQuantity = existingItem != null ? existingItem.getQuantity() : 0;
 
         int targetQuantity = existingQuantity + request.quantity();
-        if (targetQuantity > product.getStockQuantity()) {
-            throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Requested: " + targetQuantity + ", Available: " + product.getStockQuantity());
-        }
+        validateStockAvailability(product, targetQuantity);
 
         cart.addProduct(product, request.quantity());
         Cart savedCart = cartRepository.save(cart);
@@ -76,11 +66,10 @@ public class CartServiceImpl implements CartService {
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
-        if (request == null) {
-            throw new IllegalArgumentException("Update cart item request cannot be null.");
-        }
-        // Setting quantity to zero or less automatically removes the item from the cart
-        if (request.quantity() == null || request.quantity() <= 0) {
+        validateUpdateCartItemRequest(request);
+
+        // Setting quantity to zero or negative explicitly removes the item from the cart
+        if (request.quantity() <= 0) {
             return removeCartItem(user, cartToken, productId);
         }
 
@@ -88,9 +77,7 @@ public class CartServiceImpl implements CartService {
         CartItem targetItem = findCartItemOrThrow(cart, productId);
 
         Product product = findProductOrThrow(productId);
-        if (request.quantity() > product.getStockQuantity()) {
-            throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Requested: " + request.quantity() + ", Available: " + product.getStockQuantity());
-        }
+        validateStockAvailability(product, request.quantity());
 
         targetItem.setQuantity(request.quantity());
         Cart savedCart = cartRepository.save(cart);
@@ -142,7 +129,7 @@ public class CartServiceImpl implements CartService {
             return userCart;
         }
 
-        // Claim existing guest session items instead of creating a brand new empty cart
+        // Claim existing guest session items instead of creating a brand-new empty cart
         if (hasGuestToken) {
             Cart claimedCart = claimGuestCartIfExists(user, cartToken.trim());
             if (claimedCart != null) {
@@ -232,9 +219,16 @@ public class CartServiceImpl implements CartService {
         cartRepository.delete(guestCart);
     }
 
+    private void validateStockAvailability(Product product, int requestedQuantity) {
+        if (requestedQuantity > product.getStockQuantity()) {
+            log.warn("Insufficient stock for product id={}: requested={}, available={}", product.getId(), requestedQuantity, product.getStockQuantity());
+            throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Requested: " + requestedQuantity + ", Available: " + product.getStockQuantity());
+        }
+    }
+
     private CartItem findCartItem(Cart cart, Long productId) {
         for (CartItem item : cart.getItems()) {
-            if (item.getProduct().getId().equals(productId)) {
+            if (item.getProduct() != null && productId.equals(item.getProduct().getId())) {
                 return item;
             }
         }
@@ -267,5 +261,26 @@ public class CartServiceImpl implements CartService {
         }
 
         return product.get();
+    }
+
+    private void validateAddToCartRequest(AddToCartRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Add to cart request cannot be null.");
+        }
+        if (request.productId() == null) {
+            throw new IllegalArgumentException("Product ID cannot be null.");
+        }
+        if (request.quantity() == null || request.quantity() <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero.");
+        }
+    }
+
+    private void validateUpdateCartItemRequest(UpdateCartItemRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Update cart item request cannot be null.");
+        }
+        if (request.quantity() == null) {
+            throw new IllegalArgumentException("Quantity cannot be null.");
+        }
     }
 }
