@@ -62,9 +62,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     @CacheEvict(value = "categories", allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
-        if (request == null || request.getName() == null || request.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Category name is required.");
-        }
+        validateCategoryRequest(request);
 
         String name = request.getName().trim();
         if (categoryRepository.existsByName(name)) {
@@ -87,9 +85,7 @@ public class CategoryServiceImpl implements CategoryService {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
-        if (request == null || request.getName() == null || request.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Category name is required.");
-        }
+        validateCategoryRequest(request);
 
         Category category = findCategoryOrThrow(id);
 
@@ -111,7 +107,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
-    @Caching(evict = {@CacheEvict(value = "categories", allEntries = true), @CacheEvict(value = "products", allEntries = true)})
+    @CacheEvict(value = "categories", allEntries = true)
     public void deleteCategory(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
@@ -120,11 +116,21 @@ public class CategoryServiceImpl implements CategoryService {
         Category category = findCategoryOrThrow(id);
 
         if (productRepository.existsByCategoryId(id)) {
+            log.warn("Category deletion rejected: Category id={} contains associated products", id);
             throw new BadRequestException("Cannot delete category '" + category.getName() + "' because it contains associated products. Reassign or delete products first.");
         }
 
         categoryRepository.delete(category);
         log.info("Deleted category id={} with name='{}'", id, category.getName());
+    }
+
+    private void validateCategoryRequest(CategoryRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Category request cannot be null.");
+        }
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Category name is required.");
+        }
     }
 
     private Category findCategoryOrThrow(Long id) {
