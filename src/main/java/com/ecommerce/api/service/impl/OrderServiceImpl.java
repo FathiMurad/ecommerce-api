@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.CacheNames;
 import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.dto.request.CheckoutRequest;
 import com.ecommerce.api.dto.response.OrderResponse;
@@ -46,6 +47,9 @@ import java.util.UUID;
 @Transactional
 public class OrderServiceImpl implements OrderService {
 
+    private static final String TRACKING_NUMBER_PREFIX = "ORD-";
+    private static final int TRACKING_NUMBER_RANDOM_LENGTH = 10;
+
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
@@ -53,7 +57,7 @@ public class OrderServiceImpl implements OrderService {
     private final MeterRegistry meterRegistry;
 
     @Override
-    @CacheEvict(value = "products", allEntries = true)
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Checkout request cannot be null.");
@@ -103,12 +107,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Page<Order> orderPage = orderRepository.findByCustomerEmail(customerEmail.trim(), pageable);
-        List<OrderResponse> content = new ArrayList<>();
-        for (Order order : orderPage.getContent()) {
-            content.add(OrderResponse.fromEntity(order));
-        }
 
-        return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
+        return toPagedOrderResponse(orderPage);
     }
 
     @Override
@@ -119,16 +119,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), pageable);
-        List<OrderResponse> content = new ArrayList<>();
-        for (Order order : orderPage.getContent()) {
-            content.add(OrderResponse.fromEntity(order));
-        }
 
-        return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
+        return toPagedOrderResponse(orderPage);
     }
 
     @Override
-    @CacheEvict(value = "products", allEntries = true)
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
@@ -183,13 +179,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void validateCustomerDetails(String customerEmail, String customerName, String shippingAddress) {
-        if (customerEmail == null || customerEmail.isEmpty()) {
+        if (customerEmail == null || customerEmail.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer email is required for checkout.");
         }
-        if (customerName == null || customerName.isEmpty()) {
+        if (customerName == null || customerName.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer name is required for checkout.");
         }
-        if (shippingAddress == null || shippingAddress.isEmpty()) {
+        if (shippingAddress == null || shippingAddress.trim().isEmpty()) {
             throw new IllegalArgumentException("Shipping address is required for checkout.");
         }
     }
@@ -208,6 +204,7 @@ public class OrderServiceImpl implements OrderService {
             Product product = findProductWithLockOrThrow(productId);
 
             if (product.getStockQuantity() < cartItem.getQuantity()) {
+                log.warn("Insufficient stock during checkout for product id={}: requested={}, available={}", productId, cartItem.getQuantity(), product.getStockQuantity());
                 throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Available: " + product.getStockQuantity() + ", Requested: " + cartItem.getQuantity());
             }
 
@@ -235,6 +232,7 @@ public class OrderServiceImpl implements OrderService {
             Product product = findProductWithLockOrThrow(productId);
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
+            log.info("Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
         }
     }
 
@@ -250,6 +248,15 @@ public class OrderServiceImpl implements OrderService {
         sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
 
         return sortedItems;
+    }
+
+    private PagedResponse<OrderResponse> toPagedOrderResponse(Page<Order> orderPage) {
+        List<OrderResponse> content = new ArrayList<>();
+        for (Order order : orderPage.getContent()) {
+            content.add(OrderResponse.fromEntity(order));
+        }
+
+        return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
     }
 
     private Order findOrderByTrackingNumberOrThrow(String trackingNumber) {
@@ -344,7 +351,7 @@ public class OrderServiceImpl implements OrderService {
     private String generateUniqueTrackingNumber() {
         String trackingNumber;
         do {
-            trackingNumber = "ORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+            trackingNumber = TRACKING_NUMBER_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, TRACKING_NUMBER_RANDOM_LENGTH).toUpperCase();
         } while (orderRepository.findByTrackingNumber(trackingNumber).isPresent());
 
         return trackingNumber;
