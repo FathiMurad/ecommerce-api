@@ -49,7 +49,7 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findAll(pageable);
 
-        return mapToPagedResponse(productPage);
+        return toPagedProductResponse(productPage);
     }
 
     @Override
@@ -76,7 +76,7 @@ public class ProductServiceImpl implements ProductService {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findByCategoryId(categoryId, pageable);
 
-        return mapToPagedResponse(productPage);
+        return toPagedProductResponse(productPage);
     }
 
     @Override
@@ -86,7 +86,7 @@ public class ProductServiceImpl implements ProductService {
 
         Category category = findCategoryByIdOrThrow(request.getCategoryId());
 
-        Product product = Product.builder().name(request.getName() != null ? request.getName().trim() : null).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
+        Product product = Product.builder().name(request.getName().trim()).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
 
         attachProductImages(product, request.getImageUrls());
 
@@ -108,7 +108,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = findProductWithImagesOrThrow(id);
         Category category = findCategoryByIdOrThrow(request.getCategoryId());
 
-        product.setName(request.getName() != null ? request.getName().trim() : product.getName());
+        product.setName(request.getName().trim());
         product.setDescription(request.getDescription());
         product.setPrice(request.getPrice());
         product.setStockQuantity(request.getStockQuantity());
@@ -143,12 +143,21 @@ public class ProductServiceImpl implements ProductService {
         if (request == null) {
             throw new IllegalArgumentException("Product request cannot be null.");
         }
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Product name is required.");
+        }
+        if (request.getPrice() == null) {
+            throw new IllegalArgumentException("Product price is required.");
+        }
+        if (request.getStockQuantity() == null || request.getStockQuantity() < 0) {
+            throw new IllegalArgumentException("Valid stock quantity is required.");
+        }
         if (request.getCategoryId() == null) {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
     }
 
-    private PagedResponse<ProductResponse> mapToPagedResponse(Page<Product> productPage) {
+    private PagedResponse<ProductResponse> toPagedProductResponse(Page<Product> productPage) {
         List<ProductResponse> content = new ArrayList<>();
         for (Product product : productPage.getContent()) {
             content.add(ProductResponse.fromEntity(product));
