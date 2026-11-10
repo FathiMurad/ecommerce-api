@@ -1,5 +1,6 @@
 package com.ecommerce.api.service.impl;
 
+import com.ecommerce.api.constant.CacheNames;
 import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.dto.request.PaymentRequest;
 import com.ecommerce.api.dto.response.PaymentResponse;
@@ -9,6 +10,7 @@ import com.ecommerce.api.entity.Payment;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.entity.enums.PaymentStatus;
+import com.ecommerce.api.entity.enums.Role;
 import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.OrderRepository;
@@ -43,6 +45,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
+    private static final String TRANSACTION_ID_PREFIX = "TXN-";
+    private static final int TRANSACTION_ID_RANDOM_LENGTH = 10;
+
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final ProductRepository productRepository;
@@ -50,14 +55,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "products", allEntries = true)
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public PaymentResponse processPayment(String trackingNumber, PaymentRequest request) {
-        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
-            throw new IllegalArgumentException("Tracking number cannot be null or empty.");
-        }
-        if (request == null) {
-            throw new IllegalArgumentException("Payment request cannot be null.");
-        }
+        validateProcessPaymentRequest(trackingNumber, request);
 
         Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
         validateOrderAccess(order);
@@ -89,7 +89,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setFailureReason("Card declined by issuing bank (insufficient funds / test decline)");
         order.setStatus(OrderStatus.CANCELLED);
 
-        restoreInventory(order);
+        restoreStockForOrder(order);
 
         Payment savedPayment = paymentRepository.save(payment);
         orderRepository.save(order);
@@ -118,28 +118,33 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentResponse.fromEntity(savedPayment);
     }
 
+    private void validateProcessPaymentRequest(String trackingNumber, PaymentRequest request) {
+        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking number cannot be null or empty.");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Payment request cannot be null.");
+        }
+        if (request.getPaymentMethod() == null) {
+            throw new IllegalArgumentException("Payment method is required.");
+        }
+    }
+
     private void validateOrderPayable(Order order, PaymentRequest request) {
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new BadRequestException("Cannot process payment for an order with status: " + order.getStatus());
         }
 
-        if (request.getAmount() != null) {
-            if (request.getAmount().compareTo(order.getTotalAmount()) != 0) {
-                throw new BadRequestException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
-            }
+        if (request.getAmount() != null && request.getAmount().compareTo(order.getTotalAmount()) != 0) {
+            throw new BadRequestException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
         }
     }
 
     private Payment resolvePayment(Order order) {
-        Optional<Payment> payment = paymentRepository.findByOrderId(order.getId());
-        if (payment.isPresent()) {
-            return payment.get();
-        }
-
-        return Payment.builder().order(order).build();
+        return paymentRepository.findByOrderId(order.getId()).orElseGet(() -> Payment.builder().order(order).build());
     }
 
-    private void restoreInventory(Order order) {
+    private void restoreStockForOrder(Order order) {
         if (order.getItems() == null || order.getItems().isEmpty()) {
             return;
         }
@@ -150,6 +155,7 @@ public class PaymentServiceImpl implements PaymentService {
             Product product = findProductWithLockOrThrow(productId);
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
+            log.info("Restored stock for product id={} by quantity={} from declined order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
         }
     }
 
@@ -170,20 +176,22 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             String currentUserEmail = authentication.getName();
-            boolean isAdmin = false;
-            if (authentication.getAuthorities() != null) {
-                for (GrantedAuthority authority : authentication.getAuthorities()) {
-                    if ("ROLE_ADMIN".equals(authority.getAuthority())) {
-                        isAdmin = true;
-                        break;
-                    }
-                }
-            }
+            boolean isAdmin = hasAdminRole(authentication);
 
             if (!isAdmin && !currentUserEmail.equalsIgnoreCase(order.getUser().getEmail())) {
                 throw new AccessDeniedException("You are not authorized to pay for this order.");
             }
         }
+    }
+
+    private boolean hasAdminRole(Authentication authentication) {
+        for (GrantedAuthority authority : authentication.getAuthorities()) {
+            if (Role.ROLE_ADMIN.name().equals(authority.getAuthority())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private Order findOrderByTrackingNumberOrThrow(String trackingNumber) {
@@ -207,7 +215,7 @@ public class PaymentServiceImpl implements PaymentService {
     private String generateUniqueTransactionId() {
         String transactionId;
         do {
-            transactionId = "TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+            transactionId = TRANSACTION_ID_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, TRANSACTION_ID_RANDOM_LENGTH).toUpperCase();
         } while (paymentRepository.existsByTransactionId(transactionId));
 
         return transactionId;
