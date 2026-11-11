@@ -5,9 +5,7 @@ import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.dto.request.PaymentRequest;
 import com.ecommerce.api.dto.response.PaymentResponse;
 import com.ecommerce.api.entity.Order;
-import com.ecommerce.api.entity.OrderItem;
 import com.ecommerce.api.entity.Payment;
-import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.entity.enums.PaymentStatus;
 import com.ecommerce.api.entity.enums.Role;
@@ -15,7 +13,7 @@ import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.PaymentRepository;
-import com.ecommerce.api.repository.ProductRepository;
+import com.ecommerce.api.service.OrderService;
 import com.ecommerce.api.service.PaymentService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -31,9 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,7 +51,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
-    private final ProductRepository productRepository;
+    private final OrderService orderService;
     private final MeterRegistry meterRegistry;
 
     @Override
@@ -84,21 +79,18 @@ public class PaymentServiceImpl implements PaymentService {
 
         boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
         if (isDeclined) {
-            return handleDeclinedPayment(order, payment, trackingNumber, transactionId, sample);
+            return handleDeclinedPayment(payment, trackingNumber, transactionId, sample);
         }
 
-        return handleApprovedPayment(order, payment, trackingNumber, transactionId, sample);
+        return handleApprovedPayment(payment, trackingNumber, transactionId, sample);
     }
 
-    private PaymentResponse handleDeclinedPayment(Order order, Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
+    private PaymentResponse handleDeclinedPayment(Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
         payment.setStatus(PaymentStatus.FAILED);
         payment.setFailureReason("Card declined by issuing bank (insufficient funds / test decline)");
-        order.setStatus(OrderStatus.CANCELLED);
-
-        restoreStockForOrder(order);
 
         Payment savedPayment = paymentRepository.save(payment);
-        orderRepository.save(order);
+        orderService.updateOrderStatus(trackingNumber, OrderStatus.CANCELLED);
 
         sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "declined"));
         meterRegistry.counter("ecommerce.payments.processed", "outcome", "declined").increment();
@@ -108,13 +100,12 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentResponse.fromEntity(savedPayment);
     }
 
-    private PaymentResponse handleApprovedPayment(Order order, Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
+    private PaymentResponse handleApprovedPayment(Payment payment, String trackingNumber, String transactionId, Timer.Sample sample) {
         payment.setStatus(PaymentStatus.COMPLETED);
         payment.setFailureReason(null);
-        order.setStatus(OrderStatus.CONFIRMED);
 
         Payment savedPayment = paymentRepository.save(payment);
-        orderRepository.save(order);
+        orderService.updateOrderStatus(trackingNumber, OrderStatus.CONFIRMED);
 
         sample.stop(meterRegistry.timer("ecommerce.payment.processing.time", "outcome", "approved"));
         meterRegistry.counter("ecommerce.payments.processed", "outcome", "approved").increment();
@@ -148,28 +139,6 @@ public class PaymentServiceImpl implements PaymentService {
 
     private Payment resolvePayment(Order order) {
         return paymentRepository.findByOrderId(order.getId()).orElseGet(() -> Payment.builder().order(order).build());
-    }
-
-    private void restoreStockForOrder(Order order) {
-        if (order.getItems() == null || order.getItems().isEmpty()) {
-            return;
-        }
-
-        List<OrderItem> sortedItems = sortOrderItemsByProductId(order.getItems());
-        for (OrderItem item : sortedItems) {
-            Long productId = item.getProduct().getId();
-            Product product = findProductWithLockOrThrow(productId);
-            product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-            productRepository.save(product);
-            log.info("Restored stock for product id={} by quantity={} from declined order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
-        }
-    }
-
-    private List<OrderItem> sortOrderItemsByProductId(List<OrderItem> items) {
-        List<OrderItem> sortedItems = new ArrayList<>(items);
-        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
-
-        return sortedItems;
     }
 
     private void validateOrderAccess(Order order) {
@@ -207,15 +176,6 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return order.get();
-    }
-
-    private Product findProductWithLockOrThrow(Long productId) {
-        Optional<Product> product = productRepository.findByIdWithPessimisticLock(productId);
-        if (product.isEmpty()) {
-            throw new ResourceNotFoundException("Product not found with id: " + productId);
-        }
-
-        return product.get();
     }
 
     private String generateUniqueTransactionId() {
