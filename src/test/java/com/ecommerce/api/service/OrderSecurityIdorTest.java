@@ -16,10 +16,10 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,9 +27,6 @@ class OrderSecurityIdorTest {
 
     @Mock
     private OrderRepository orderRepository;
-
-    @Mock
-    private CartService cartService;
 
     @Spy
     private OrderAccessPolicy orderAccessPolicy = new OrderAccessPolicy();
@@ -46,9 +43,11 @@ class OrderSecurityIdorTest {
 
         Order order = Order.builder().id(10L).trackingNumber(trackingNumber).user(owner).items(new ArrayList<>()).build();
 
-        when(orderRepository.findByTrackingNumberWithItems(trackingNumber)).thenReturn(Optional.of(order));
+        when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(order);
 
         assertThrows(ResourceNotFoundException.class, () -> orderService.getOrderByTrackingNumber(trackingNumber, attacker));
+
+        verify(orderAccessPolicy).assertCanAccess(order, attacker);
     }
 
     @Test
@@ -60,9 +59,10 @@ class OrderSecurityIdorTest {
 
         Order order = Order.builder().id(10L).trackingNumber(trackingNumber).user(owner).items(new ArrayList<>()).build();
 
-        when(orderRepository.findByTrackingNumberWithItems(trackingNumber)).thenReturn(Optional.of(order));
+        when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(order);
 
         assertDoesNotThrow(() -> orderService.getOrderByTrackingNumber(trackingNumber, admin));
+        verify(orderAccessPolicy).assertCanAccess(order, admin);
     }
 
     @Test
@@ -71,8 +71,9 @@ class OrderSecurityIdorTest {
         String trackingNumber = "ORD-GUEST12345";
         Order guestOrder = Order.builder().id(11L).trackingNumber(trackingNumber).user(null).items(new ArrayList<>()).build();
 
-        when(orderRepository.findByTrackingNumberWithItems(trackingNumber)).thenReturn(Optional.of(guestOrder));
+        when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(guestOrder);
 
         assertDoesNotThrow(() -> orderService.getOrderByTrackingNumber(trackingNumber, null));
+        verify(orderAccessPolicy).assertCanAccess(guestOrder, null);
     }
 }

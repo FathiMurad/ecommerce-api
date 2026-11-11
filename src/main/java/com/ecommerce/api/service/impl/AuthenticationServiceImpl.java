@@ -10,6 +10,7 @@ import com.ecommerce.api.repository.UserRepository;
 import com.ecommerce.api.security.JwtService;
 import com.ecommerce.api.security.SecurityUser;
 import com.ecommerce.api.service.AuthenticationService;
+import com.ecommerce.api.util.Emails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -39,7 +40,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public AuthenticationResponse register(RegisterRequest request) {
         validateRegisterRequest(request);
 
-        String normalizedEmail = normalizeEmail(request.getEmail());
+        String normalizedEmail = Emails.normalize(request.getEmail());
 
         if (userRepository.existsByEmail(normalizedEmail)) {
             log.warn("Registration rejected: Duplicate email conflict for requested account");
@@ -66,7 +67,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public AuthenticationResponse authenticate(LoginRequest request) {
         validateLoginRequest(request);
 
-        String normalizedEmail = normalizeEmail(request.getEmail());
+        String normalizedEmail = Emails.normalize(request.getEmail());
 
         Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
 
@@ -99,9 +100,5 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
             throw new IllegalArgumentException("Password is required.");
         }
-    }
-
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase();
     }
 }

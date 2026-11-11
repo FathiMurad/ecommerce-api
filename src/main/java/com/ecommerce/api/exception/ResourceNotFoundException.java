@@ -1,11 +1,12 @@
 package com.ecommerce.api.exception;
 
-/**
- * Thrown when an entity requested by a client does not exist in the database.
- */
 public class ResourceNotFoundException extends RuntimeException {
 
     public ResourceNotFoundException(String message) {
         super(message);
+    }
+
+    public static ResourceNotFoundException of(String entityName, Object id) {
+        return new ResourceNotFoundException(entityName + " not found with id: " + id);
     }
 }

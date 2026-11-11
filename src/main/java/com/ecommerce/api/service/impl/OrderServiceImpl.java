@@ -22,6 +22,7 @@ import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.security.OrderAccessPolicy;
 import com.ecommerce.api.service.OrderService;
+import com.ecommerce.api.util.Emails;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +37,8 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Service implementation for managing orders and checkout operations.
@@ -58,6 +59,9 @@ public class OrderServiceImpl implements OrderService {
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
 
+    private record CustomerDetails(String name, String email, String address) {
+    }
+
     @Override
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
@@ -65,17 +69,15 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Checkout request cannot be null.");
         }
 
+        // Fail-fast: אימות פרטי לקוח לפני שאילתות מסד נתונים
+        CustomerDetails details = resolveCustomerDetails(user, request);
+
         Cart cart = resolveCartForCheckout(user, cartToken);
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new EmptyCartException("Cannot checkout with an empty cart.");
         }
 
-        String customerEmail = resolveCustomerEmail(user, request);
-        String customerName = resolveCustomerName(user, request);
-        String shippingAddress = resolveShippingAddress(request);
-        validateCustomerDetails(customerEmail, customerName, shippingAddress);
-
-        Order order = buildInitialOrder(user, customerName, customerEmail, shippingAddress);
+        Order order = buildInitialOrder(user, details.name(), details.email(), details.address());
         deductStockAndCreateOrderItems(order, cart);
 
         order.setTotalAmount(order.calculateTotalAmount().setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP));
@@ -96,7 +98,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
         }
 
-        Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
+        Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
         orderAccessPolicy.assertCanAccess(order, viewer);
 
         return OrderResponse.fromEntity(order);
@@ -109,7 +111,8 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Customer email cannot be null or empty.");
         }
 
-        Page<Order> orderPage = orderRepository.findByCustomerEmail(customerEmail.trim(), pageable);
+        String normalizedEmail = Emails.normalize(customerEmail);
+        Page<Order> orderPage = orderRepository.findByCustomerEmailIgnoreCase(normalizedEmail, pageable);
         return toPagedOrderResponse(orderPage);
     }
 
@@ -134,7 +137,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("New status cannot be null.");
         }
 
-        Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
+        Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
         OrderStatus currentStatus = order.getStatus();
 
         if (currentStatus == newStatus) {
@@ -179,16 +182,35 @@ public class OrderServiceImpl implements OrderService {
         return OrderResponse.fromEntity(updatedOrder);
     }
 
-    private void validateCustomerDetails(String customerEmail, String customerName, String shippingAddress) {
-        if (customerEmail == null || customerEmail.trim().isEmpty()) {
+    private CustomerDetails resolveCustomerDetails(User user, CheckoutRequest request) {
+        String email = (user != null && user.getEmail() != null && !user.getEmail().trim().isEmpty()) ? user.getEmail() : (request != null ? request.customerEmail() : null);
+
+        String name = null;
+        if (user != null) {
+            String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
+            String last = user.getLastName() != null ? user.getLastName().trim() : "";
+            String full = (first + " " + last).trim();
+            if (!full.isEmpty()) {
+                name = full;
+            }
+        }
+        if (name == null && request != null) {
+            name = request.customerName();
+        }
+
+        String address = (request != null) ? request.shippingAddress() : null;
+
+        if (email == null || email.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer email is required for checkout.");
         }
-        if (customerName == null || customerName.trim().isEmpty()) {
+        if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer name is required for checkout.");
         }
-        if (shippingAddress == null || shippingAddress.trim().isEmpty()) {
+        if (address == null || address.trim().isEmpty()) {
             throw new IllegalArgumentException("Shipping address is required for checkout.");
         }
+
+        return new CustomerDetails(name.trim(), Emails.normalize(email), address.trim());
     }
 
     private Order buildInitialOrder(User user, String customerName, String customerEmail, String shippingAddress) {
@@ -198,11 +220,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void deductStockAndCreateOrderItems(Order order, Cart cart) {
-        List<CartItem> sortedItems = sortCartItemsByProductId(cart.getItems());
+        List<CartItem> sortedItems = sortItemsByProductId(cart.getItems(), item -> item.getProduct().getId());
 
         for (CartItem cartItem : sortedItems) {
             Long productId = cartItem.getProduct().getId();
-            Product product = findProductWithLockOrThrow(productId);
+            Product product = productRepository.getForUpdateOrThrow(productId);
 
             if (product.getStockQuantity() < cartItem.getQuantity()) {
                 log.warn("Insufficient stock during checkout for product id={}: requested={}, available={}", productId, cartItem.getQuantity(), product.getStockQuantity());
@@ -224,26 +246,20 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void restoreStockForOrder(Order order) {
-        List<OrderItem> sortedOrderItems = sortOrderItemsByProductId(order.getItems());
+        List<OrderItem> sortedOrderItems = sortItemsByProductId(order.getItems(), item -> item.getProduct().getId());
         for (OrderItem item : sortedOrderItems) {
             Long productId = item.getProduct().getId();
-            Product product = findProductWithLockOrThrow(productId);
+            Product product = productRepository.getForUpdateOrThrow(productId);
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
             log.info("Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
         }
     }
 
-    private List<CartItem> sortCartItemsByProductId(List<CartItem> items) {
-        List<CartItem> sortedItems = new ArrayList<>(items);
-        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
-        return sortedItems;
-    }
-
-    private List<OrderItem> sortOrderItemsByProductId(List<OrderItem> items) {
-        List<OrderItem> sortedItems = new ArrayList<>(items);
-        sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
-        return sortedItems;
+    private <T> List<T> sortItemsByProductId(List<T> items, Function<T, Long> productIdExtractor) {
+        List<T> sortedList = new ArrayList<>(items);
+        sortedList.sort(Comparator.comparingLong(productIdExtractor::apply));
+        return sortedList;
     }
 
     private PagedResponse<OrderResponse> toPagedOrderResponse(Page<Order> orderPage) {
@@ -251,98 +267,38 @@ public class OrderServiceImpl implements OrderService {
         for (Order order : orderPage.getContent()) {
             content.add(OrderResponse.fromEntity(order));
         }
-        return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
-    }
-
-    private Order findOrderByTrackingNumberOrThrow(String trackingNumber) {
-        Optional<Order> order = orderRepository.findByTrackingNumberWithItems(trackingNumber);
-        if (order.isEmpty()) {
-            throw new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber);
-        }
-        return order.get();
-    }
-
-    private Product findProductWithLockOrThrow(Long productId) {
-        Optional<Product> product = productRepository.findByIdWithPessimisticLock(productId);
-        if (product.isEmpty()) {
-            throw new ResourceNotFoundException("Product not found with id: " + productId);
-        }
-        return product.get();
+        return new PagedResponse<>(content, orderPage);
     }
 
     private Cart resolveCartForCheckout(User user, String cartToken) {
         if (user != null) {
-            Optional<Cart> userCart = cartRepository.findByUserIdWithItems(user.getId());
-            if (userCart.isPresent()) {
-                return userCart.get();
-            }
-
-            if (cartToken != null && !cartToken.trim().isEmpty()) {
-                Optional<Cart> tokenCart = cartRepository.findByCartTokenWithItems(cartToken.trim());
-                if (tokenCart.isPresent()) {
-                    Cart cart = tokenCart.get();
-                    if (cart.getUser() == null || cart.getUser().getId().equals(user.getId())) {
-                        return cart;
-                    }
-                    log.warn("User id={} attempted to checkout cart id={} belonging to another user", user.getId(), cart.getId());
-                }
-            }
-
-            throw new ResourceNotFoundException("No active shopping cart found for user.");
+            return cartRepository.findByUserIdWithItems(user.getId()).orElseGet(() -> resolveGuestOrThrow(cartToken, user.getId()));
         }
 
         if (cartToken != null && !cartToken.trim().isEmpty()) {
-            Optional<Cart> tokenCart = cartRepository.findByCartTokenWithItems(cartToken.trim());
-            if (tokenCart.isPresent()) {
-                Cart cart = tokenCart.get();
-                if (cart.getUser() == null) {
-                    return cart;
-                }
+            Cart cart = cartRepository.findByCartTokenWithItems(cartToken.trim()).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for checkout."));
+            if (cart.getUser() != null) {
                 log.warn("Guest attempted to checkout authenticated user cart via token: {}", cartToken);
                 throw new BadRequestException("The specified cart belongs to a registered user. Please log in to complete checkout.");
             }
+            return cart;
         }
 
         throw new ResourceNotFoundException("No active shopping cart found for checkout.");
     }
 
-    private String resolveCustomerEmail(User user, CheckoutRequest request) {
-        if (user != null && user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
-            return user.getEmail().trim();
+    private Cart resolveGuestOrThrow(String cartToken, Long userId) {
+        if (cartToken != null && !cartToken.trim().isEmpty()) {
+            return cartRepository.findByCartTokenWithItems(cartToken.trim()).filter(c -> c.getUser() == null || c.getUser().getId().equals(userId)).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for user."));
         }
-        if (request != null && request.customerEmail() != null && !request.customerEmail().trim().isEmpty()) {
-            return request.customerEmail().trim();
-        }
-        return null;
-    }
-
-    private String resolveCustomerName(User user, CheckoutRequest request) {
-        if (user != null) {
-            String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
-            String last = user.getLastName() != null ? user.getLastName().trim() : "";
-            String full = (first + " " + last).trim();
-            if (!full.isEmpty()) {
-                return full;
-            }
-        }
-        if (request != null && request.customerName() != null && !request.customerName().trim().isEmpty()) {
-            return request.customerName().trim();
-        }
-        return null;
-    }
-
-    private String resolveShippingAddress(CheckoutRequest request) {
-        if (request != null && request.shippingAddress() != null && !request.shippingAddress().trim().isEmpty()) {
-            return request.shippingAddress().trim();
-        }
-        return null;
+        throw new ResourceNotFoundException("No active shopping cart found for user.");
     }
 
     private String generateUniqueTrackingNumber() {
         String trackingNumber;
         do {
             trackingNumber = TRACKING_NUMBER_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, TRACKING_NUMBER_RANDOM_LENGTH).toUpperCase();
-        } while (orderRepository.findByTrackingNumber(trackingNumber).isPresent());
+        } while (orderRepository.existsByTrackingNumber(trackingNumber));
 
         return trackingNumber;
     }

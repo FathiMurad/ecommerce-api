@@ -1,6 +1,7 @@
 package com.ecommerce.api.repository;
 
 import com.ecommerce.api.entity.Product;
+import com.ecommerce.api.exception.ResourceNotFoundException;
 import jakarta.persistence.LockModeType;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
@@ -40,4 +41,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Product p WHERE p.id = :id")
     Optional<Product> findByIdWithPessimisticLock(@Param("id") Long id);
+
+    default Product getOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
+    }
+
+    default Product getWithImagesOrThrow(Long id) {
+        return findByIdWithImages(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
+    }
+
+    default Product getForUpdateOrThrow(Long id) {
+        return findByIdWithPessimisticLock(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
+    }
 }

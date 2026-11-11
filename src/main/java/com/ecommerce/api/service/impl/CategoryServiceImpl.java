@@ -6,7 +6,6 @@ import com.ecommerce.api.dto.response.CategoryResponse;
 import com.ecommerce.api.entity.Category;
 import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.ConflictException;
-import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.CategoryRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.CategoryService;
@@ -18,7 +17,6 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,14 +35,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Cacheable(value = CacheNames.CATEGORIES, key = "'all'")
     public List<CategoryResponse> getAllCategories() {
-        List<Category> categories = categoryRepository.findAll();
-        List<CategoryResponse> responses = new ArrayList<>();
-
-        for (Category category : categories) {
-            responses.add(CategoryResponse.fromEntity(category));
-        }
-
-        return responses;
+        return categoryRepository.findAll().stream().map(CategoryResponse::fromEntity).toList();
     }
 
     @Override
@@ -54,8 +45,7 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
 
-        Category category = findCategoryOrThrow(id);
-
+        Category category = categoryRepository.getOrThrow(id);
         return CategoryResponse.fromEntity(category);
     }
 
@@ -72,7 +62,6 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         Category category = Category.builder().name(name).description(request.getDescription()).build();
-
         Category savedCategory = categoryRepository.save(category);
         log.info("Created category id={} with name='{}'", savedCategory.getId(), savedCategory.getName());
 
@@ -88,7 +77,7 @@ public class CategoryServiceImpl implements CategoryService {
         }
         validateCategoryRequest(request);
 
-        Category category = findCategoryOrThrow(id);
+        Category category = categoryRepository.getOrThrow(id);
 
         String name = request.getName().trim();
         Optional<Category> existingCategory = categoryRepository.findByName(name);
@@ -114,7 +103,7 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalArgumentException("Category ID cannot be null.");
         }
 
-        Category category = findCategoryOrThrow(id);
+        Category category = categoryRepository.getOrThrow(id);
 
         if (productRepository.existsByCategoryId(id)) {
             log.warn("Category deletion rejected: Category id={} contains associated products", id);
@@ -132,14 +121,5 @@ public class CategoryServiceImpl implements CategoryService {
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("Category name is required.");
         }
-    }
-
-    private Category findCategoryOrThrow(Long id) {
-        Optional<Category> category = categoryRepository.findById(id);
-        if (category.isEmpty()) {
-            throw new ResourceNotFoundException("Category not found with id: " + id);
-        }
-
-        return category.get();
     }
 }

@@ -1,6 +1,7 @@
 package com.ecommerce.api.repository;
 
 import com.ecommerce.api.entity.Category;
+import com.ecommerce.api.exception.ResourceNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
@@ -13,4 +14,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     Optional<Category> findByName(String name);
 
     boolean existsByName(String name);
+
+    default Category getOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> ResourceNotFoundException.of("Category", id));
+    }
 }

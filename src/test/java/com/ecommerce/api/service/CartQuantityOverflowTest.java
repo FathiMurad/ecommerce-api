@@ -47,12 +47,10 @@ class CartQuantityOverflowTest {
         cart.getItems().add(existingItem);
 
         when(cartRepository.findByCartTokenWithItems(any())).thenReturn(Optional.of(cart));
-        when(productRepository.findByIdWithImages(productId)).thenReturn(Optional.of(product));
+        when(productRepository.getWithImagesOrThrow(productId)).thenReturn(product);
 
-        // ניסיון הוספת כמות שמביאה לסכום הגדול מ-Integer.MAX_VALUE
         AddToCartRequest maliciousRequest = new AddToCartRequest(productId, Integer.MAX_VALUE);
 
-        // ללא טיפול ב-long/addExact, 1 + Integer.MAX_VALUE הופך למספר שלילי ועוקף את בדיקת המלאי
         assertThrows(InsufficientStockException.class, () -> cartService.addToCart(null, "guest-token", maliciousRequest));
     }
 }

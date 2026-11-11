@@ -24,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -48,7 +47,6 @@ public class ProductServiceImpl implements ProductService {
     public PagedResponse<ProductResponse> getAllProducts(int page, int size, String sortBy, String sortDirection) {
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findAll(pageable);
-
         return toPagedProductResponse(productPage);
     }
 
@@ -58,9 +56,7 @@ public class ProductServiceImpl implements ProductService {
         if (id == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
-
-        Product product = findProductWithImagesOrThrow(id);
-
+        Product product = productRepository.getWithImagesOrThrow(id);
         return ProductResponse.fromEntity(product);
     }
 
@@ -75,7 +71,6 @@ public class ProductServiceImpl implements ProductService {
 
         Pageable pageable = createSafePageable(page, size, sortBy, sortDirection);
         Page<Product> productPage = productRepository.findByCategoryId(categoryId, pageable);
-
         return toPagedProductResponse(productPage);
     }
 
@@ -84,7 +79,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse createProduct(ProductRequest request) {
         validateProductRequest(request);
 
-        Category category = findCategoryByIdOrThrow(request.getCategoryId());
+        Category category = categoryRepository.getOrThrow(request.getCategoryId());
 
         Product product = Product.builder().name(request.getName().trim()).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
 
@@ -105,8 +100,8 @@ public class ProductServiceImpl implements ProductService {
         }
         validateProductRequest(request);
 
-        Product product = findProductWithImagesOrThrow(id);
-        Category category = findCategoryByIdOrThrow(request.getCategoryId());
+        Product product = productRepository.getWithImagesOrThrow(id);
+        Category category = categoryRepository.getOrThrow(request.getCategoryId());
 
         product.setName(request.getName().trim());
         product.setDescription(request.getDescription());
@@ -133,8 +128,7 @@ public class ProductServiceImpl implements ProductService {
             throw new IllegalArgumentException("Product ID cannot be null.");
         }
 
-        Product product = findProductByIdOrThrow(id);
-
+        Product product = productRepository.getOrThrow(id);
         productRepository.delete(product);
         log.info("Deleted product id={} with name='{}'", id, product.getName());
     }
@@ -162,8 +156,7 @@ public class ProductServiceImpl implements ProductService {
         for (Product product : productPage.getContent()) {
             content.add(ProductResponse.fromEntity(product));
         }
-
-        return new PagedResponse<>(content, productPage.getNumber(), productPage.getSize(), productPage.getTotalElements(), productPage.getTotalPages(), productPage.isLast());
+        return new PagedResponse<>(content, productPage);
     }
 
     private void attachProductImages(Product product, List<String> imageUrls) {
@@ -171,15 +164,17 @@ public class ProductServiceImpl implements ProductService {
             return;
         }
 
-        for (int i = 0; i < imageUrls.size(); i++) {
-            String imageUrl = imageUrls.get(i);
-            if (imageUrl != null && !imageUrl.trim().isEmpty()) {
-                boolean isPrimary = (i == PRIMARY_IMAGE_INDEX);
-
-                ProductImage image = ProductImage.builder().imageUrl(imageUrl.trim()).isPrimary(isPrimary).displayOrder(i).build();
-
-                product.addImage(image);
+        List<String> cleanUrls = new ArrayList<>();
+        for (String url : imageUrls) {
+            if (url != null && !url.trim().isEmpty()) {
+                cleanUrls.add(url.trim());
             }
+        }
+
+        for (int i = 0; i < cleanUrls.size(); i++) {
+            boolean isPrimary = (i == PRIMARY_IMAGE_INDEX);
+            ProductImage image = ProductImage.builder().imageUrl(cleanUrls.get(i)).isPrimary(isPrimary).displayOrder(i).build();
+            product.addImage(image);
         }
     }
 
@@ -191,32 +186,5 @@ public class ProductServiceImpl implements ProductService {
         Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
 
         return PageRequest.of(safePage, safeSize, Sort.by(direction, property));
-    }
-
-    private Product findProductWithImagesOrThrow(Long id) {
-        Optional<Product> product = productRepository.findByIdWithImages(id);
-        if (product.isEmpty()) {
-            throw new ResourceNotFoundException("Product not found with id: " + id);
-        }
-
-        return product.get();
-    }
-
-    private Product findProductByIdOrThrow(Long id) {
-        Optional<Product> product = productRepository.findById(id);
-        if (product.isEmpty()) {
-            throw new ResourceNotFoundException("Product not found with id: " + id);
-        }
-
-        return product.get();
-    }
-
-    private Category findCategoryByIdOrThrow(Long categoryId) {
-        Optional<Category> category = categoryRepository.findById(categoryId);
-        if (category.isEmpty()) {
-            throw new ResourceNotFoundException("Category not found with id: " + categoryId);
-        }
-
-        return category.get();
     }
 }
