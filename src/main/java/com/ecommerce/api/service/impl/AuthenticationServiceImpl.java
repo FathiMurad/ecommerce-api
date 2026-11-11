@@ -21,6 +21,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
+
 /**
  * Service implementation for user login and registration.
  */
@@ -38,7 +40,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
-        validateRegisterRequest(request);
+        Objects.requireNonNull(request, "Registration request cannot be null.");
 
         String normalizedEmail = Emails.normalize(request.getEmail());
 
@@ -65,7 +67,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public AuthenticationResponse authenticate(LoginRequest request) {
-        validateLoginRequest(request);
+        Objects.requireNonNull(request, "Login request cannot be null.");
 
         String normalizedEmail = Emails.normalize(request.getEmail());
 
@@ -76,29 +78,5 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         log.info("User authenticated successfully: email={}", normalizedEmail);
 
         return new AuthenticationResponse(token);
-    }
-
-    private void validateRegisterRequest(RegisterRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Registration request cannot be null.");
-        }
-        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
-            throw new IllegalArgumentException("Email is required.");
-        }
-        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
-            throw new IllegalArgumentException("Password is required.");
-        }
-    }
-
-    private void validateLoginRequest(LoginRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Login request cannot be null.");
-        }
-        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
-            throw new IllegalArgumentException("Email is required.");
-        }
-        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
-            throw new IllegalArgumentException("Password is required.");
-        }
     }
 }

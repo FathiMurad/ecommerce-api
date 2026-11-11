@@ -33,11 +33,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.Assert;
 
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -69,9 +71,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Checkout request cannot be null.");
-        }
+        Objects.requireNonNull(request, "Checkout request cannot be null.");
 
         CustomerDetails details = resolveCustomerDetails(user, request);
 
@@ -96,9 +96,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer) {
-        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
-            throw new IllegalArgumentException("Tracking number cannot be null or empty.");
-        }
+        Assert.hasText(trackingNumber, "Tracking number cannot be null or empty.");
 
         Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
         orderAccessPolicy.assertCanAccess(order, viewer);
@@ -108,9 +106,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PagedResponse<OrderResponse> getOrdersByCustomerEmail(String customerEmail, Pageable pageable) {
-        if (customerEmail == null || customerEmail.trim().isEmpty()) {
-            throw new IllegalArgumentException("Customer email cannot be null or empty.");
-        }
+        Assert.hasText(customerEmail, "Customer email cannot be null or empty.");
 
         String normalizedEmail = Emails.normalize(customerEmail);
         Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
@@ -120,9 +116,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable) {
-        if (user == null || user.getId() == null) {
-            throw new IllegalArgumentException("User cannot be null when fetching order history.");
-        }
+        Objects.requireNonNull(user, "User cannot be null when fetching order history.");
+        Objects.requireNonNull(user.getId(), "User ID cannot be null when fetching order history.");
 
         Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), safePageable);
@@ -133,12 +128,8 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
-        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
-            throw new IllegalArgumentException("Tracking number cannot be null or empty.");
-        }
-        if (newStatus == null) {
-            throw new IllegalArgumentException("New status cannot be null.");
-        }
+        Assert.hasText(trackingNumber, "Tracking number cannot be null or empty.");
+        Objects.requireNonNull(newStatus, "New status cannot be null.");
 
         Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
         OrderStatus currentStatus = order.getStatus();

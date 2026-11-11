@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -41,10 +42,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Cacheable(value = CacheNames.CATEGORIES, key = "#id")
     public CategoryResponse getCategoryById(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
-
+        Objects.requireNonNull(id, "Category ID cannot be null.");
         Category category = categoryRepository.getOrThrow(id);
         return CategoryResponse.fromEntity(category);
     }
@@ -53,7 +51,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     @CacheEvict(value = CacheNames.CATEGORIES, allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
-        validateCategoryRequest(request);
+        Objects.requireNonNull(request, "Category request cannot be null.");
 
         String name = request.getName().trim();
         if (categoryRepository.existsByName(name)) {
@@ -72,10 +70,8 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     @Caching(evict = {@CacheEvict(value = CacheNames.CATEGORIES, allEntries = true), @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)})
     public CategoryResponse updateCategory(Long id, CategoryRequest request) {
-        if (id == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
-        validateCategoryRequest(request);
+        Objects.requireNonNull(id, "Category ID cannot be null.");
+        Objects.requireNonNull(request, "Category request cannot be null.");
 
         Category category = categoryRepository.getOrThrow(id);
 
@@ -99,9 +95,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     @CacheEvict(value = CacheNames.CATEGORIES, allEntries = true)
     public void deleteCategory(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
+        Objects.requireNonNull(id, "Category ID cannot be null.");
 
         Category category = categoryRepository.getOrThrow(id);
 
@@ -112,14 +106,5 @@ public class CategoryServiceImpl implements CategoryService {
 
         categoryRepository.delete(category);
         log.info("Deleted category id={} with name='{}'", id, category.getName());
-    }
-
-    private void validateCategoryRequest(CategoryRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Category request cannot be null.");
-        }
-        if (request.getName() == null || request.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Category name is required.");
-        }
     }
 }

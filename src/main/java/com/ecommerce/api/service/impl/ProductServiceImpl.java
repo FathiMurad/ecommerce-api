@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Service implementation for managing catalog products and inventory.
@@ -54,18 +55,14 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Cacheable(value = CacheNames.PRODUCTS, key = "#id")
     public ProductResponse getProductById(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
+        Objects.requireNonNull(id, "Product ID cannot be null.");
         Product product = productRepository.getWithImagesOrThrow(id);
         return ProductResponse.fromEntity(product);
     }
 
     @Override
     public PagedResponse<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
-        if (categoryId == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
+        Objects.requireNonNull(categoryId, "Category ID cannot be null.");
         if (!categoryRepository.existsById(categoryId)) {
             throw new ResourceNotFoundException("Category not found with id: " + categoryId);
         }
@@ -84,7 +81,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
-        validateProductRequest(request);
+        Objects.requireNonNull(request, "Product request cannot be null.");
 
         Category category = categoryRepository.getOrThrow(request.getCategoryId());
 
@@ -102,10 +99,8 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, key = "#id")
     public ProductResponse updateProduct(Long id, ProductRequest request) {
-        if (id == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
-        validateProductRequest(request);
+        Objects.requireNonNull(id, "Product ID cannot be null.");
+        Objects.requireNonNull(request, "Product request cannot be null.");
 
         Product product = productRepository.getWithImagesOrThrow(id);
         Category category = categoryRepository.getOrThrow(request.getCategoryId());
@@ -131,31 +126,11 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, key = "#id")
     public void deleteProduct(Long id) {
-        if (id == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
+        Objects.requireNonNull(id, "Product ID cannot be null.");
 
         Product product = productRepository.getOrThrow(id);
         productRepository.delete(product);
         log.info("Deleted product id={} with name='{}'", id, product.getName());
-    }
-
-    private void validateProductRequest(ProductRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Product request cannot be null.");
-        }
-        if (request.getName() == null || request.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Product name is required.");
-        }
-        if (request.getPrice() == null) {
-            throw new IllegalArgumentException("Product price is required.");
-        }
-        if (request.getStockQuantity() == null || request.getStockQuantity() < 0) {
-            throw new IllegalArgumentException("Valid stock quantity is required.");
-        }
-        if (request.getCategoryId() == null) {
-            throw new IllegalArgumentException("Category ID cannot be null.");
-        }
     }
 
     private void attachProductImages(Product product, List<String> imageUrls) {

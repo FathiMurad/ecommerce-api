@@ -25,9 +25,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.Assert;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -53,7 +55,9 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public PaymentResponse processPayment(String trackingNumber, PaymentRequest request) {
-        validateProcessPaymentRequest(trackingNumber, request);
+        Assert.hasText(trackingNumber, "Tracking number cannot be null or empty.");
+        Objects.requireNonNull(request, "Payment request cannot be null.");
+        Objects.requireNonNull(request.getPaymentMethod(), "Payment method is required.");
 
         Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
 
@@ -113,18 +117,6 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Payment completed successfully for trackingNumber={}, transactionId={}, amount={}", trackingNumber, transactionId, payment.getAmount());
 
         return PaymentResponse.fromEntity(savedPayment);
-    }
-
-    private void validateProcessPaymentRequest(String trackingNumber, PaymentRequest request) {
-        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
-            throw new IllegalArgumentException("Tracking number cannot be null or empty.");
-        }
-        if (request == null) {
-            throw new IllegalArgumentException("Payment request cannot be null.");
-        }
-        if (request.getPaymentMethod() == null) {
-            throw new IllegalArgumentException("Payment method is required.");
-        }
     }
 
     private void validateOrderPayable(Order order, PaymentRequest request) {

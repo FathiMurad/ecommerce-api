@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,7 +45,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse addToCart(User user, String cartToken, AddToCartRequest request) {
-        validateAddToCartRequest(request);
+        Objects.requireNonNull(request, "Add to cart request cannot be null.");
 
         Cart cart = resolveCart(user, cartToken);
         Product product = productRepository.getWithImagesOrThrow(request.productId());
@@ -65,10 +66,8 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse updateCartItem(User user, String cartToken, Long productId, UpdateCartItemRequest request) {
-        if (productId == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
-        validateUpdateCartItemRequest(request);
+        Objects.requireNonNull(productId, "Product ID cannot be null.");
+        Objects.requireNonNull(request, "Update cart item request cannot be null.");
 
         if (request.quantity() <= 0) {
             return removeCartItem(user, cartToken, productId);
@@ -90,9 +89,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse removeCartItem(User user, String cartToken, Long productId) {
-        if (productId == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
+        Objects.requireNonNull(productId, "Product ID cannot be null.");
 
         Cart cart = resolveCart(user, cartToken);
         cart.removeProduct(productId);
@@ -236,26 +233,5 @@ public class CartServiceImpl implements CartService {
             throw new ResourceNotFoundException("Item with product id " + productId + " not found in cart.");
         }
         return item;
-    }
-
-    private void validateAddToCartRequest(AddToCartRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Add to cart request cannot be null.");
-        }
-        if (request.productId() == null) {
-            throw new IllegalArgumentException("Product ID cannot be null.");
-        }
-        if (request.quantity() == null || request.quantity() <= 0) {
-            throw new IllegalArgumentException("Quantity must be greater than zero.");
-        }
-    }
-
-    private void validateUpdateCartItemRequest(UpdateCartItemRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Update cart item request cannot be null.");
-        }
-        if (request.quantity() == null) {
-            throw new IllegalArgumentException("Quantity cannot be null.");
-        }
     }
 }
