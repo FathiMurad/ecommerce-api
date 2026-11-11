@@ -28,19 +28,21 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
+@Transactional(readOnly = true)
 public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
 
     @Override
+    @Transactional
     public CartResponse getOrCreateCart(User user, String cartToken) {
         Cart cart = resolveCart(user, cartToken);
         return CartResponse.fromEntity(cart);
     }
 
     @Override
+    @Transactional
     public CartResponse addToCart(User user, String cartToken, AddToCartRequest request) {
         validateAddToCartRequest(request);
 
@@ -61,6 +63,7 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
+    @Transactional
     public CartResponse updateCartItem(User user, String cartToken, Long productId, UpdateCartItemRequest request) {
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -85,6 +88,7 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
+    @Transactional
     public CartResponse removeCartItem(User user, String cartToken, Long productId) {
         if (productId == null) {
             throw new IllegalArgumentException("Product ID cannot be null.");
@@ -99,6 +103,7 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
+    @Transactional
     public void clearCart(User user, String cartToken) {
         Cart cart = resolveCart(user, cartToken);
         cart.clear();

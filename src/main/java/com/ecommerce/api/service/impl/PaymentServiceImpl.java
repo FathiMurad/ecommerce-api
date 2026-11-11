@@ -36,6 +36,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class PaymentServiceImpl implements PaymentService {
 
     private static final String TRANSACTION_ID_PREFIX = "TXN-";

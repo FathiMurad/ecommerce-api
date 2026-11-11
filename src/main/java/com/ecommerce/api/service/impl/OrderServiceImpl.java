@@ -46,7 +46,7 @@ import java.util.function.Function;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
+@Transactional(readOnly = true)
 public class OrderServiceImpl implements OrderService {
 
     private static final String TRACKING_NUMBER_PREFIX = "ORD-";
@@ -63,13 +63,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Checkout request cannot be null.");
         }
 
-        // Fail-fast: אימות פרטי לקוח לפני שאילתות מסד נתונים
         CustomerDetails details = resolveCustomerDetails(user, request);
 
         Cart cart = resolveCartForCheckout(user, cartToken);
@@ -92,7 +92,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
@@ -105,7 +104,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<OrderResponse> getOrdersByCustomerEmail(String customerEmail, Pageable pageable) {
         if (customerEmail == null || customerEmail.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer email cannot be null or empty.");
@@ -117,7 +115,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable) {
         if (user == null || user.getId() == null) {
             throw new IllegalArgumentException("User cannot be null when fetching order history.");
@@ -128,6 +125,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
     @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
