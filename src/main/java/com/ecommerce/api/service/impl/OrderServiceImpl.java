@@ -23,6 +23,7 @@ import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.security.OrderAccessPolicy;
 import com.ecommerce.api.service.OrderService;
 import com.ecommerce.api.util.Emails;
+import com.ecommerce.api.util.PageRequests;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -51,6 +53,7 @@ public class OrderServiceImpl implements OrderService {
 
     private static final String TRACKING_NUMBER_PREFIX = "ORD-";
     private static final int TRACKING_NUMBER_RANDOM_LENGTH = 10;
+    private static final Set<String> ALLOWED_ORDER_SORT_PROPERTIES = Set.of("id", "totalAmount", "status");
 
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
@@ -110,8 +113,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         String normalizedEmail = Emails.normalize(customerEmail);
-        Page<Order> orderPage = orderRepository.findByCustomerEmailIgnoreCase(normalizedEmail, pageable);
-        return toPagedOrderResponse(orderPage);
+        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
+        Page<Order> orderPage = orderRepository.findByCustomerEmailIgnoreCase(normalizedEmail, safePageable);
+        return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
 
     @Override
@@ -120,8 +124,9 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("User cannot be null when fetching order history.");
         }
 
-        Page<Order> orderPage = orderRepository.findByUserId(user.getId(), pageable);
-        return toPagedOrderResponse(orderPage);
+        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
+        Page<Order> orderPage = orderRepository.findByUserId(user.getId(), safePageable);
+        return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
 
     @Override
@@ -242,14 +247,6 @@ public class OrderServiceImpl implements OrderService {
         List<T> sortedList = new ArrayList<>(items);
         sortedList.sort(Comparator.comparingLong(productIdExtractor::apply));
         return sortedList;
-    }
-
-    private PagedResponse<OrderResponse> toPagedOrderResponse(Page<Order> orderPage) {
-        List<OrderResponse> content = new ArrayList<>();
-        for (Order order : orderPage.getContent()) {
-            content.add(OrderResponse.fromEntity(order));
-        }
-        return new PagedResponse<>(content, orderPage);
     }
 
     private Cart resolveCartForCheckout(User user, String cartToken) {
