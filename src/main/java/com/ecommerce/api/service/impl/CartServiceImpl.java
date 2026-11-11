@@ -49,9 +49,9 @@ public class CartServiceImpl implements CartService {
         Product product = findProductWithImagesOrThrow(request.productId());
 
         CartItem existingItem = findCartItem(cart, product.getId());
-        int existingQuantity = existingItem != null ? existingItem.getQuantity() : 0;
+        long existingQuantity = existingItem != null ? existingItem.getQuantity() : 0L;
 
-        int targetQuantity = existingQuantity + request.quantity();
+        long targetQuantity = existingQuantity + request.quantity();
         validateStockAvailability(product, targetQuantity);
 
         cart.addProduct(product, request.quantity());
@@ -219,7 +219,7 @@ public class CartServiceImpl implements CartService {
         cartRepository.delete(guestCart);
     }
 
-    private void validateStockAvailability(Product product, int requestedQuantity) {
+    private void validateStockAvailability(Product product, long requestedQuantity) {
         if (requestedQuantity > product.getStockQuantity()) {
             log.warn("Insufficient stock for product id={}: requested={}, available={}", product.getId(), requestedQuantity, product.getStockQuantity());
             throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Requested: " + requestedQuantity + ", Available: " + product.getStockQuantity());

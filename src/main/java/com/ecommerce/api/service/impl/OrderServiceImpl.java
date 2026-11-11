@@ -20,6 +20,7 @@ import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.CartRepository;
 import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.ProductRepository;
+import com.ecommerce.api.security.OrderAccessPolicy;
 import com.ecommerce.api.service.OrderService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
+    private final OrderAccessPolicy orderAccessPolicy;
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
 
@@ -89,12 +91,13 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public OrderResponse getOrderByTrackingNumber(String trackingNumber) {
+    public OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer) {
         if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking number cannot be null or empty.");
         }
 
         Order order = findOrderByTrackingNumberOrThrow(trackingNumber.trim());
+        orderAccessPolicy.assertCanAccess(order, viewer);
 
         return OrderResponse.fromEntity(order);
     }
@@ -107,7 +110,6 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Page<Order> orderPage = orderRepository.findByCustomerEmail(customerEmail.trim(), pageable);
-
         return toPagedOrderResponse(orderPage);
     }
 
@@ -119,7 +121,6 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), pageable);
-
         return toPagedOrderResponse(orderPage);
     }
 
@@ -212,16 +213,13 @@ public class OrderServiceImpl implements OrderService {
             productRepository.save(product);
 
             OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
-
             order.addItem(orderItem);
         }
     }
 
     private void notifyOrderPlaced(Order order) {
         log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", order.getTrackingNumber(), order.getCustomerEmail(), order.getTotalAmount(), order.getStatus());
-
         meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment();
-
         eventPublisher.publishEvent(new OrderPlacedEvent(order.getId(), order.getTrackingNumber(), order.getCustomerEmail(), order.getCustomerName(), order.getTotalAmount()));
     }
 
@@ -239,14 +237,12 @@ public class OrderServiceImpl implements OrderService {
     private List<CartItem> sortCartItemsByProductId(List<CartItem> items) {
         List<CartItem> sortedItems = new ArrayList<>(items);
         sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
-
         return sortedItems;
     }
 
     private List<OrderItem> sortOrderItemsByProductId(List<OrderItem> items) {
         List<OrderItem> sortedItems = new ArrayList<>(items);
         sortedItems.sort(Comparator.comparingLong(item -> item.getProduct().getId()));
-
         return sortedItems;
     }
 
@@ -255,7 +251,6 @@ public class OrderServiceImpl implements OrderService {
         for (Order order : orderPage.getContent()) {
             content.add(OrderResponse.fromEntity(order));
         }
-
         return new PagedResponse<>(content, orderPage.getNumber(), orderPage.getSize(), orderPage.getTotalElements(), orderPage.getTotalPages(), orderPage.isLast());
     }
 
@@ -264,7 +259,6 @@ public class OrderServiceImpl implements OrderService {
         if (order.isEmpty()) {
             throw new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber);
         }
-
         return order.get();
     }
 
@@ -273,7 +267,6 @@ public class OrderServiceImpl implements OrderService {
         if (product.isEmpty()) {
             throw new ResourceNotFoundException("Product not found with id: " + productId);
         }
-
         return product.get();
     }
 
@@ -320,7 +313,6 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.customerEmail() != null && !request.customerEmail().trim().isEmpty()) {
             return request.customerEmail().trim();
         }
-
         return null;
     }
 
@@ -336,7 +328,6 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.customerName() != null && !request.customerName().trim().isEmpty()) {
             return request.customerName().trim();
         }
-
         return null;
     }
 
@@ -344,7 +335,6 @@ public class OrderServiceImpl implements OrderService {
         if (request != null && request.shippingAddress() != null && !request.shippingAddress().trim().isEmpty()) {
             return request.shippingAddress().trim();
         }
-
         return null;
     }
 

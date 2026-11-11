@@ -14,7 +14,11 @@ public interface OrderService {
 
     OrderResponse checkout(User user, String cartToken, CheckoutRequest request);
 
-    OrderResponse getOrderByTrackingNumber(String trackingNumber);
+    OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer);
+
+    default OrderResponse getOrderByTrackingNumber(String trackingNumber) {
+        return getOrderByTrackingNumber(trackingNumber, null);
+    }
 
     PagedResponse<OrderResponse> getOrdersByCustomerEmail(String customerEmail, Pageable pageable);
 
