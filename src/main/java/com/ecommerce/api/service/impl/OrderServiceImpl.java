@@ -144,35 +144,19 @@ public class OrderServiceImpl implements OrderService {
             return OrderResponse.fromEntity(order);
         }
 
-        if (currentStatus == OrderStatus.DELIVERED || currentStatus == OrderStatus.CANCELLED) {
+        if (currentStatus.isTerminal()) {
             throw new BadRequestException("Cannot modify an order already in terminal status: " + currentStatus);
         }
 
-        switch (newStatus) {
-            case CONFIRMED -> {
-                if (currentStatus != OrderStatus.PENDING) {
-                    throw new BadRequestException("Only PENDING orders can be moved to CONFIRMED. Current status: " + currentStatus);
-                }
-                meterRegistry.counter("ecommerce.orders.confirmed").increment();
-            }
-            case SHIPPED -> {
-                if (currentStatus != OrderStatus.CONFIRMED) {
-                    throw new BadRequestException("Only CONFIRMED orders can be dispatched to SHIPPED. Current status: " + currentStatus);
-                }
-            }
-            case DELIVERED -> {
-                if (currentStatus != OrderStatus.SHIPPED) {
-                    throw new BadRequestException("Only SHIPPED orders can be marked as DELIVERED. Current status: " + currentStatus);
-                }
-            }
-            case CANCELLED -> {
-                if (currentStatus != OrderStatus.PENDING && currentStatus != OrderStatus.CONFIRMED) {
-                    throw new BadRequestException("Only PENDING or CONFIRMED orders can be cancelled. Current status: " + currentStatus);
-                }
-                meterRegistry.counter("ecommerce.orders.cancelled").increment();
-                restoreStockForOrder(order);
-            }
-            default -> throw new BadRequestException("Unsupported status transition to: " + newStatus);
+        if (!currentStatus.canTransitionTo(newStatus)) {
+            throw new BadRequestException("Cannot transition order from " + currentStatus + " to " + newStatus);
+        }
+
+        if (newStatus == OrderStatus.CONFIRMED) {
+            meterRegistry.counter("ecommerce.orders.confirmed").increment();
+        } else if (newStatus == OrderStatus.CANCELLED) {
+            meterRegistry.counter("ecommerce.orders.cancelled").increment();
+            restoreStockForOrder(order);
         }
 
         order.setStatus(newStatus);

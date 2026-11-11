@@ -4,12 +4,29 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Represents the lifecycle stages of an order from placement to delivery or cancellation.
+ * Represents the lifecycle stages of an order from placement to delivery or cancellation,
+ * encapsulating domain state transition rules.
  */
 public enum OrderStatus {
     PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED;
+
+    private static final Map<OrderStatus, Set<OrderStatus>> VALID_TRANSITIONS = Map.of(PENDING, EnumSet.of(CONFIRMED, CANCELLED), CONFIRMED, EnumSet.of(SHIPPED, CANCELLED), SHIPPED, EnumSet.of(DELIVERED), DELIVERED, EnumSet.noneOf(OrderStatus.class), CANCELLED, EnumSet.noneOf(OrderStatus.class));
+
+    public boolean canTransitionTo(OrderStatus target) {
+        if (target == null) {
+            return false;
+        }
+        return VALID_TRANSITIONS.getOrDefault(this, EnumSet.noneOf(OrderStatus.class)).contains(target);
+    }
+
+    public boolean isTerminal() {
+        return this == DELIVERED || this == CANCELLED;
+    }
 
     @JsonValue
     public String toValue() {
