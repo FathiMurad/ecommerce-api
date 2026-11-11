@@ -38,7 +38,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Service implementation for managing payment transactions.
+ * Service implementation for managing payment transactions using a simulated payment gateway.
+ * <p>
+ * Simulates payment processing behavior for development and testing:
+ * - Cards ending in 0000 simulate bank decline (insufficient funds), cancelling the order and restoring stock.
+ * - All other cards simulate approved payment, moving the order to CONFIRMED.
+ * <p>
+ * Enforces ownership checks to prevent IDOR and maintains idempotency against duplicate charges.
  */
 @Slf4j
 @Service
