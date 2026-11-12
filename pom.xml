@@ -53,6 +53,12 @@
 			<artifactId>spring-boot-starter-cache</artifactId>
 		</dependency>
 
+		<!-- Caffeine Cache Provider (TTL & Size Eviction) -->
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
+
 		<!-- Spring Boot Actuator (Health Checks & Observability) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

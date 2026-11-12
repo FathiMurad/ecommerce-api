@@ -16,10 +16,6 @@ public interface OrderService {
 
     OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer);
 
-    default OrderResponse getOrderByTrackingNumber(String trackingNumber) {
-        return getOrderByTrackingNumber(trackingNumber, null);
-    }
-
     PagedResponse<OrderResponse> getOrdersByCustomerEmail(String customerEmail, Pageable pageable);
 
     PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable);

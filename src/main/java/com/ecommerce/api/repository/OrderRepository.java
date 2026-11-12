@@ -15,8 +15,6 @@ import java.util.Optional;
  */
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    boolean existsByTrackingNumber(String trackingNumber);
-
     /**
      * Loads an order with its items and products in one query to avoid N+1 issues.
      */

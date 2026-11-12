@@ -72,6 +72,10 @@ public class Payment {
     @Column(name = "failure_reason", length = FAILURE_REASON_MAX_LENGTH)
     private String failureReason;
 
+    @Column(name = "failed_attempts")
+    @Builder.Default
+    private Integer failedAttempts = 0;
+
     @Version
     private Integer version;
 

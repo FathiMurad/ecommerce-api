@@ -5,7 +5,6 @@ import com.ecommerce.api.entity.Cart;
 import com.ecommerce.api.entity.CartItem;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.exception.InsufficientStockException;
-import com.ecommerce.api.repository.CartRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.impl.CartServiceImpl;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +26,7 @@ import static org.mockito.Mockito.when;
 class CartQuantityOverflowTest {
 
     @Mock
-    private CartRepository cartRepository;
+    private CartResolver cartResolver;
 
     @Mock
     private ProductRepository productRepository;
@@ -46,7 +45,7 @@ class CartQuantityOverflowTest {
         CartItem existingItem = CartItem.builder().id(100L).cart(cart).product(product).quantity(1).build();
         cart.getItems().add(existingItem);
 
-        when(cartRepository.findByCartTokenWithItems(any())).thenReturn(Optional.of(cart));
+        when(cartResolver.findGuest(any())).thenReturn(Optional.of(cart));
         when(productRepository.getWithImagesOrThrow(productId)).thenReturn(product);
 
         AddToCartRequest maliciousRequest = new AddToCartRequest(productId, Integer.MAX_VALUE);

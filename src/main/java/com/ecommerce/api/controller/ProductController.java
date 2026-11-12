@@ -4,6 +4,8 @@ import com.ecommerce.api.dto.request.ProductRequest;
 import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.dto.response.ProductResponse;
 import com.ecommerce.api.service.ProductService;
+import com.ecommerce.api.util.PageRequests;
+import com.ecommerce.api.util.SortFields;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -14,6 +16,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,7 +46,8 @@ public class ProductController {
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved paginated products", content = @Content(schema = @Schema(implementation = PagedResponse.class)))})
     @GetMapping
     public ResponseEntity<PagedResponse<ProductResponse>> getAllProducts(@Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page (max 100)") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property: id, name, price, stockQuantity") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction: asc or desc") @RequestParam(defaultValue = "asc") String sortDirection) {
-        PagedResponse<ProductResponse> products = productService.getAllProducts(page, size, sortBy, sortDirection);
+        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, SortFields.PRODUCT_SORT_FIELDS, "id");
+        PagedResponse<ProductResponse> products = productService.getAllProducts(pageable);
         return ResponseEntity.ok(products);
     }
 
@@ -59,7 +63,8 @@ public class ProductController {
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved products for category", content = @Content(schema = @Schema(implementation = PagedResponse.class))), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)})
     @GetMapping("/category/{categoryId}")
     public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long categoryId, @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction") @RequestParam(defaultValue = "asc") String sortDirection) {
-        PagedResponse<ProductResponse> products = productService.getProductsByCategoryId(categoryId, page, size, sortBy, sortDirection);
+        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, SortFields.PRODUCT_SORT_FIELDS, "id");
+        PagedResponse<ProductResponse> products = productService.getProductsByCategoryId(categoryId, pageable);
         return ResponseEntity.ok(products);
     }
 
@@ -82,7 +87,7 @@ public class ProductController {
     }
 
     @Operation(summary = "Delete a product", description = "Removes a product and its image associations from the catalog. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "204", description = "Product deleted successfully"), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Product not found", content = @Content)})
+    @ApiResponses(value = {@ApiResponse(responseCode = "204", description = "Product deleted successfully"), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Product not found", content = @Content), @ApiResponse(responseCode = "409", description = "Product is referenced in existing orders", content = @Content)})
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteProduct(@Parameter(description = "Product unique identifier", required = true) @PathVariable Long id) {

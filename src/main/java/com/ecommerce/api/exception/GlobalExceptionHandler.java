@@ -73,6 +73,12 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(BusinessRuleViolationException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessRuleViolationException(BusinessRuleViolationException ex) {
+        log.warn("Business rule violation rejected: {}", ex.getMessage());
+        return buildResponse(HttpStatus.valueOf(422), ex.getMessage());
+    }
+
     @ExceptionHandler(EmptyCartException.class)
     public ResponseEntity<ErrorResponse> handleEmptyCartException(EmptyCartException ex) {
         log.warn("Empty cart operation rejected: {}", ex.getMessage());

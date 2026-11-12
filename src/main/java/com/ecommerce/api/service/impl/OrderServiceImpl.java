@@ -14,16 +14,19 @@ import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.event.OrderPlacedEvent;
 import com.ecommerce.api.exception.BadRequestException;
+import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
-import com.ecommerce.api.repository.CartRepository;
 import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.security.OrderAccessPolicy;
+import com.ecommerce.api.service.CartResolver;
 import com.ecommerce.api.service.OrderService;
 import com.ecommerce.api.util.Emails;
 import com.ecommerce.api.util.PageRequests;
+import com.ecommerce.api.util.PublicIdGenerator;
+import com.ecommerce.api.util.SortFields;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,15 +36,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.Assert;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -53,12 +56,8 @@ import java.util.function.Function;
 @Transactional(readOnly = true)
 public class OrderServiceImpl implements OrderService {
 
-    private static final String TRACKING_NUMBER_PREFIX = "ORD-";
-    private static final int TRACKING_NUMBER_RANDOM_LENGTH = 10;
-    private static final Set<String> ALLOWED_ORDER_SORT_PROPERTIES = Set.of("id", "totalAmount", "status");
-
     private final OrderRepository orderRepository;
-    private final CartRepository cartRepository;
+    private final CartResolver cartResolver;
     private final ProductRepository productRepository;
     private final OrderAccessPolicy orderAccessPolicy;
     private final ApplicationEventPublisher eventPublisher;
@@ -69,7 +68,6 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
         Objects.requireNonNull(request, "Checkout request cannot be null.");
 
@@ -80,15 +78,13 @@ public class OrderServiceImpl implements OrderService {
             throw new EmptyCartException("Cannot checkout with an empty cart.");
         }
 
-        Order order = buildInitialOrder(user, details.name(), details.email(), details.address());
+        Order order = buildInitialOrder(user, details);
         deductStockAndCreateOrderItems(order, cart);
 
         order.setTotalAmount(order.calculateTotalAmount().setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP));
         Order savedOrder = orderRepository.save(order);
 
         cart.clear();
-        cartRepository.save(cart);
-
         notifyOrderPlaced(savedOrder);
 
         return OrderResponse.fromEntity(savedOrder);
@@ -96,7 +92,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponse getOrderByTrackingNumber(String trackingNumber, User viewer) {
-        Assert.hasText(trackingNumber, "Tracking number cannot be null or empty.");
+        Objects.requireNonNull(trackingNumber, "Tracking number cannot be null.");
 
         Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
         orderAccessPolicy.assertCanAccess(order, viewer);
@@ -106,10 +102,10 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public PagedResponse<OrderResponse> getOrdersByCustomerEmail(String customerEmail, Pageable pageable) {
-        Assert.hasText(customerEmail, "Customer email cannot be null or empty.");
+        Objects.requireNonNull(customerEmail, "Customer email cannot be null.");
 
         String normalizedEmail = Emails.normalize(customerEmail);
-        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
+        Pageable safePageable = PageRequests.safe(pageable, SortFields.ORDER_SORT_FIELDS, "id");
         Page<Order> orderPage = orderRepository.findByCustomerEmailIgnoreCase(normalizedEmail, safePageable);
         return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
@@ -119,16 +115,16 @@ public class OrderServiceImpl implements OrderService {
         Objects.requireNonNull(user, "User cannot be null when fetching order history.");
         Objects.requireNonNull(user.getId(), "User ID cannot be null when fetching order history.");
 
-        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_ORDER_SORT_PROPERTIES, "id");
+        Pageable safePageable = PageRequests.safe(pageable, SortFields.ORDER_SORT_FIELDS, "id");
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), safePageable);
         return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true, condition = "#newStatus == T(com.ecommerce.api.entity.enums.OrderStatus).CANCELLED")
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
-        Assert.hasText(trackingNumber, "Tracking number cannot be null or empty.");
+        Objects.requireNonNull(trackingNumber, "Tracking number cannot be null.");
         Objects.requireNonNull(newStatus, "New status cannot be null.");
 
         Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
@@ -139,62 +135,69 @@ public class OrderServiceImpl implements OrderService {
         }
 
         if (currentStatus.isTerminal()) {
-            throw new BadRequestException("Cannot modify an order already in terminal status: " + currentStatus);
+            throw new ConflictException("Cannot modify an order already in terminal status: " + currentStatus);
         }
 
         if (!currentStatus.canTransitionTo(newStatus)) {
-            throw new BadRequestException("Cannot transition order from " + currentStatus + " to " + newStatus);
+            throw new ConflictException("Cannot transition order from " + currentStatus + " to " + newStatus);
         }
 
-        if (newStatus == OrderStatus.CONFIRMED) {
-            meterRegistry.counter("ecommerce.orders.confirmed").increment();
-        } else if (newStatus == OrderStatus.CANCELLED) {
-            meterRegistry.counter("ecommerce.orders.cancelled").increment();
+        if (newStatus == OrderStatus.CANCELLED) {
             restoreStockForOrder(order);
         }
 
         order.setStatus(newStatus);
         Order updatedOrder = orderRepository.save(order);
-        log.info("Order status updated for trackingNumber={}: {} -> {}", trackingNumber, currentStatus, newStatus);
 
+        if (newStatus == OrderStatus.CONFIRMED) {
+            afterCommit(() -> meterRegistry.counter("ecommerce.orders.confirmed").increment());
+        } else if (newStatus == OrderStatus.CANCELLED) {
+            afterCommit(() -> meterRegistry.counter("ecommerce.orders.cancelled").increment());
+        }
+
+        log.info("Order status updated for trackingNumber={}: {} -> {}", trackingNumber, currentStatus, newStatus);
         return OrderResponse.fromEntity(updatedOrder);
     }
 
     private CustomerDetails resolveCustomerDetails(User user, CheckoutRequest request) {
-        String email = (user != null && user.getEmail() != null && !user.getEmail().trim().isEmpty()) ? user.getEmail() : (request != null ? request.customerEmail() : null);
+        String email = firstNonBlank(user != null ? user.getEmail() : null, request.customerEmail());
+        String name = firstNonBlank(fullName(user), request.customerName());
+        String address = firstNonBlank(request.shippingAddress());
 
-        String name = null;
-        if (user != null) {
-            String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
-            String last = user.getLastName() != null ? user.getLastName().trim() : "";
-            String full = (first + " " + last).trim();
-            if (!full.isEmpty()) {
-                name = full;
-            }
+        if (!StringUtils.hasText(email)) {
+            throw new BadRequestException("Customer email is required for checkout.");
         }
-        if (name == null && request != null) {
-            name = request.customerName();
+        if (!StringUtils.hasText(name)) {
+            throw new BadRequestException("Customer name is required for checkout.");
         }
-
-        String address = (request != null) ? request.shippingAddress() : null;
-
-        if (email == null || email.trim().isEmpty()) {
-            throw new IllegalArgumentException("Customer email is required for checkout.");
-        }
-        if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("Customer name is required for checkout.");
-        }
-        if (address == null || address.trim().isEmpty()) {
-            throw new IllegalArgumentException("Shipping address is required for checkout.");
+        if (!StringUtils.hasText(address)) {
+            throw new BadRequestException("Shipping address is required for checkout.");
         }
 
-        return new CustomerDetails(name.trim(), Emails.normalize(email), address.trim());
+        return new CustomerDetails(name, Emails.normalize(email), address);
     }
 
-    private Order buildInitialOrder(User user, String customerName, String customerEmail, String shippingAddress) {
-        String trackingNumber = generateUniqueTrackingNumber();
+    private String fullName(User user) {
+        if (user == null) {
+            return null;
+        }
+        String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
+        String last = user.getLastName() != null ? user.getLastName().trim() : "";
+        String full = (first + " " + last).trim();
+        return full.isEmpty() ? null : full;
+    }
 
-        return Order.builder().trackingNumber(trackingNumber).user(user).customerName(customerName).customerEmail(customerEmail).shippingAddress(shippingAddress).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private Order buildInitialOrder(User user, CustomerDetails details) {
+        return Order.builder().trackingNumber(PublicIdGenerator.generateTrackingNumber()).user(user).customerName(details.name()).customerEmail(details.email()).shippingAddress(details.address()).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
     }
 
     private void deductStockAndCreateOrderItems(Order order, Cart cart) {
@@ -206,11 +209,10 @@ public class OrderServiceImpl implements OrderService {
 
             if (product.getStockQuantity() < cartItem.getQuantity()) {
                 log.warn("Insufficient stock during checkout for product id={}: requested={}, available={}", productId, cartItem.getQuantity(), product.getStockQuantity());
-                throw new InsufficientStockException("Insufficient stock for product '" + product.getName() + "'. Available: " + product.getStockQuantity() + ", Requested: " + cartItem.getQuantity());
+                throw InsufficientStockException.of(product, cartItem.getQuantity());
             }
 
             product.setStockQuantity(product.getStockQuantity() - cartItem.getQuantity());
-            productRepository.save(product);
 
             OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
             order.addItem(orderItem);
@@ -218,8 +220,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void notifyOrderPlaced(Order order) {
-        log.info("Order created successfully with trackingNumber={} for customerEmail={}, totalAmount={}, status={}", order.getTrackingNumber(), order.getCustomerEmail(), order.getTotalAmount(), order.getStatus());
-        meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment();
+        log.info("Order created successfully: orderId={}, trackingNumber={}, totalAmount={}, status={}", order.getId(), order.getTrackingNumber(), order.getTotalAmount(), order.getStatus());
+        afterCommit(() -> meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment());
         eventPublisher.publishEvent(new OrderPlacedEvent(order.getId(), order.getTrackingNumber(), order.getCustomerEmail(), order.getCustomerName(), order.getTotalAmount()));
     }
 
@@ -229,7 +231,6 @@ public class OrderServiceImpl implements OrderService {
             Long productId = item.getProduct().getId();
             Product product = productRepository.getForUpdateOrThrow(productId);
             product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-            productRepository.save(product);
             log.info("Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
         }
     }
@@ -242,34 +243,21 @@ public class OrderServiceImpl implements OrderService {
 
     private Cart resolveCartForCheckout(User user, String cartToken) {
         if (user != null) {
-            return cartRepository.findByUserIdWithItems(user.getId()).orElseGet(() -> resolveGuestOrThrow(cartToken, user.getId()));
+            return cartResolver.findForUser(user, cartToken).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for user."));
         }
-
-        if (cartToken != null && !cartToken.trim().isEmpty()) {
-            Cart cart = cartRepository.findByCartTokenWithItems(cartToken.trim()).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for checkout."));
-            if (cart.getUser() != null) {
-                log.warn("Guest attempted to checkout authenticated user cart via token: {}", cartToken);
-                throw new BadRequestException("The specified cart belongs to a registered user. Please log in to complete checkout.");
-            }
-            return cart;
-        }
-
-        throw new ResourceNotFoundException("No active shopping cart found for checkout.");
+        return cartResolver.findGuest(cartToken).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for checkout."));
     }
 
-    private Cart resolveGuestOrThrow(String cartToken, Long userId) {
-        if (cartToken != null && !cartToken.trim().isEmpty()) {
-            return cartRepository.findByCartTokenWithItems(cartToken.trim()).filter(c -> c.getUser() == null || c.getUser().getId().equals(userId)).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for user."));
+    private void afterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
         }
-        throw new ResourceNotFoundException("No active shopping cart found for user.");
-    }
-
-    private String generateUniqueTrackingNumber() {
-        String trackingNumber;
-        do {
-            trackingNumber = TRACKING_NUMBER_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, TRACKING_NUMBER_RANDOM_LENGTH).toUpperCase();
-        } while (orderRepository.existsByTrackingNumber(trackingNumber));
-
-        return trackingNumber;
     }
 }

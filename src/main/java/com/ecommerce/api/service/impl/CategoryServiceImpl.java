@@ -4,7 +4,7 @@ import com.ecommerce.api.constant.CacheNames;
 import com.ecommerce.api.dto.request.CategoryRequest;
 import com.ecommerce.api.dto.response.CategoryResponse;
 import com.ecommerce.api.entity.Category;
-import com.ecommerce.api.exception.BadRequestException;
+import com.ecommerce.api.event.CategoryUpdatedEvent;
 import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.repository.CategoryRepository;
 import com.ecommerce.api.repository.ProductRepository;
@@ -13,13 +13,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Service implementation for managing product categories.
@@ -32,6 +31,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Cacheable(value = CacheNames.CATEGORIES, key = "'all'")
@@ -54,10 +54,7 @@ public class CategoryServiceImpl implements CategoryService {
         Objects.requireNonNull(request, "Category request cannot be null.");
 
         String name = request.getName().trim();
-        if (categoryRepository.existsByName(name)) {
-            log.warn("Category creation rejected: Name '{}' already exists", name);
-            throw new ConflictException("Category with name '" + name + "' already exists.");
-        }
+        ensureNameAvailable(name, null);
 
         Category category = Category.builder().name(name).description(request.getDescription()).build();
         Category savedCategory = categoryRepository.save(category);
@@ -68,7 +65,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     @Transactional
-    @Caching(evict = {@CacheEvict(value = CacheNames.CATEGORIES, allEntries = true), @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)})
+    @CacheEvict(value = CacheNames.CATEGORIES, allEntries = true)
     public CategoryResponse updateCategory(Long id, CategoryRequest request) {
         Objects.requireNonNull(id, "Category ID cannot be null.");
         Objects.requireNonNull(request, "Category request cannot be null.");
@@ -76,19 +73,15 @@ public class CategoryServiceImpl implements CategoryService {
         Category category = categoryRepository.getOrThrow(id);
 
         String name = request.getName().trim();
-        Optional<Category> existingCategory = categoryRepository.findByName(name);
-        if (existingCategory.isPresent() && !existingCategory.get().getId().equals(id)) {
-            log.warn("Category update rejected: Name '{}' already exists", name);
-            throw new ConflictException("Category with name '" + name + "' already exists.");
-        }
+        ensureNameAvailable(name, id);
 
         category.setName(name);
         category.setDescription(request.getDescription());
 
-        Category updatedCategory = categoryRepository.save(category);
-        log.info("Updated category id={} with name='{}'", updatedCategory.getId(), updatedCategory.getName());
+        eventPublisher.publishEvent(new CategoryUpdatedEvent(id));
+        log.info("Updated category id={} with name='{}'", category.getId(), category.getName());
 
-        return CategoryResponse.fromEntity(updatedCategory);
+        return CategoryResponse.fromEntity(category);
     }
 
     @Override
@@ -101,10 +94,19 @@ public class CategoryServiceImpl implements CategoryService {
 
         if (productRepository.existsByCategoryId(id)) {
             log.warn("Category deletion rejected: Category id={} contains associated products", id);
-            throw new BadRequestException("Cannot delete category '" + category.getName() + "' because it contains associated products. Reassign or delete products first.");
+            throw new ConflictException("Cannot delete category '" + category.getName() + "' because it contains associated products. Reassign or delete products first.");
         }
 
         categoryRepository.delete(category);
         log.info("Deleted category id={} with name='{}'", id, category.getName());
+    }
+
+    private void ensureNameAvailable(String name, Long excludeId) {
+        boolean exists = (excludeId == null) ? categoryRepository.existsByNameIgnoreCase(name) : categoryRepository.existsByNameIgnoreCaseAndIdNot(name, excludeId);
+
+        if (exists) {
+            log.warn("Category operation rejected: Name '{}' already exists", name);
+            throw new ConflictException("Category with name '" + name + "' already exists.");
+        }
     }
 }

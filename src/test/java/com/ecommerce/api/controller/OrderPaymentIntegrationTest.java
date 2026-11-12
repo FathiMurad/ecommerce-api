@@ -108,9 +108,9 @@ class OrderPaymentIntegrationTest {
 
         String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
 
-        // 2. Illegal transition: Cannot jump directly from PENDING to SHIPPED -> Expect 400 Bad Request
+        // 2. Illegal transition: Cannot jump directly from PENDING to SHIPPED -> Expect 409 Conflict
         UpdateOrderStatusRequest illegalJump = new UpdateOrderStatusRequest(OrderStatus.SHIPPED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(illegalJump))).andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(illegalJump))).andExpect(status().isConflict());
 
         // 3. Legal transition: PENDING -> CONFIRMED
         UpdateOrderStatusRequest confirmRequest = new UpdateOrderStatusRequest(OrderStatus.CONFIRMED);
@@ -124,9 +124,9 @@ class OrderPaymentIntegrationTest {
         UpdateOrderStatusRequest deliverRequest = new UpdateOrderStatusRequest(OrderStatus.DELIVERED);
         mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(deliverRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DELIVERED"));
 
-        // 6. Terminal state guard: Cannot modify an order already in DELIVERED status -> Expect 400 Bad Request
+        // 6. Terminal state guard: Cannot modify an order already in DELIVERED status -> Expect 409 Conflict
         UpdateOrderStatusRequest modifyDelivered = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(modifyDelivered))).andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(modifyDelivered))).andExpect(status().isConflict());
     }
 
     @Test
@@ -168,8 +168,8 @@ class OrderPaymentIntegrationTest {
     }
 
     @Test
-    @DisplayName("Payment Decline Automatically Cancels Order and Restores Stock")
-    void testPaymentDeclineCancelsOrderAndRestoresStock() throws Exception {
+    @DisplayName("Payment Decline Leaves Order Pending and Preserves Stock Reservation")
+    void testPaymentDeclineLeavesOrderPendingAndPreservesStock() throws Exception {
         entityManager.flush();
         entityManager.clear();
         Product productBefore = productRepository.findById(1L).orElseThrow();
@@ -199,13 +199,13 @@ class OrderPaymentIntegrationTest {
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
 
-        // 3. Verify order status marked as CANCELLED
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        // 3. Verify order status remains PENDING so customer can retry with another card
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING"));
 
-        // 4. Verify stock automatically restored back to initial level
+        // 4. Verify stock remains reserved for the pending order
         entityManager.flush();
         entityManager.clear();
         Product productAfterFailedPayment = productRepository.findById(1L).orElseThrow();
-        assertThat(productAfterFailedPayment.getStockQuantity()).isEqualTo(initialStock);
+        assertThat(productAfterFailedPayment.getStockQuantity()).isEqualTo(initialStock - 2);
     }
 }

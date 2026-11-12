@@ -7,11 +7,13 @@ import com.ecommerce.api.dto.response.ProductResponse;
 import com.ecommerce.api.entity.Category;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.ProductImage;
-import com.ecommerce.api.exception.ResourceNotFoundException;
+import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.repository.CategoryRepository;
+import com.ecommerce.api.repository.OrderItemRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.service.ProductService;
 import com.ecommerce.api.util.PageRequests;
+import com.ecommerce.api.util.SortFields;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -38,18 +40,13 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final OrderItemRepository orderItemRepository;
 
     @Override
     public PagedResponse<ProductResponse> getAllProducts(Pageable pageable) {
-        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_SORT_PROPERTIES, "id");
+        Pageable safePageable = PageRequests.safe(pageable, SortFields.PRODUCT_SORT_FIELDS, "id");
         Page<Product> productPage = productRepository.findAll(safePageable);
         return PagedResponse.from(productPage, ProductResponse::fromEntity);
-    }
-
-    @Override
-    public PagedResponse<ProductResponse> getAllProducts(int page, int size, String sortBy, String sortDirection) {
-        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, ALLOWED_SORT_PROPERTIES, "id");
-        return getAllProducts(pageable);
     }
 
     @Override
@@ -63,19 +60,11 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public PagedResponse<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
         Objects.requireNonNull(categoryId, "Category ID cannot be null.");
-        if (!categoryRepository.existsById(categoryId)) {
-            throw new ResourceNotFoundException("Category not found with id: " + categoryId);
-        }
+        categoryRepository.getOrThrow(categoryId);
 
-        Pageable safePageable = PageRequests.safe(pageable, ALLOWED_SORT_PROPERTIES, "id");
+        Pageable safePageable = PageRequests.safe(pageable, SortFields.PRODUCT_SORT_FIELDS, "id");
         Page<Product> productPage = productRepository.findByCategoryId(categoryId, safePageable);
         return PagedResponse.from(productPage, ProductResponse::fromEntity);
-    }
-
-    @Override
-    public PagedResponse<ProductResponse> getProductsByCategoryId(Long categoryId, int page, int size, String sortBy, String sortDirection) {
-        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, ALLOWED_SORT_PROPERTIES, "id");
-        return getProductsByCategoryId(categoryId, pageable);
     }
 
     @Override
@@ -84,9 +73,8 @@ public class ProductServiceImpl implements ProductService {
         Objects.requireNonNull(request, "Product request cannot be null.");
 
         Category category = categoryRepository.getOrThrow(request.getCategoryId());
-
-        Product product = Product.builder().name(request.getName().trim()).description(request.getDescription()).price(request.getPrice()).stockQuantity(request.getStockQuantity()).category(category).build();
-
+        Product product = Product.builder().build();
+        applyRequest(product, request, category);
         attachProductImages(product, request.getImageUrls());
 
         Product savedProduct = productRepository.save(product);
@@ -105,21 +93,15 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.getWithImagesOrThrow(id);
         Category category = categoryRepository.getOrThrow(request.getCategoryId());
 
-        product.setName(request.getName().trim());
-        product.setDescription(request.getDescription());
-        product.setPrice(request.getPrice());
-        product.setStockQuantity(request.getStockQuantity());
-        product.setCategory(category);
+        applyRequest(product, request, category);
 
         if (request.getImageUrls() != null) {
             product.getImages().clear();
             attachProductImages(product, request.getImageUrls());
         }
 
-        Product updatedProduct = productRepository.save(product);
-        log.info("Updated product id={} with name='{}'", updatedProduct.getId(), updatedProduct.getName());
-
-        return ProductResponse.fromEntity(updatedProduct);
+        log.info("Updated product id={} with name='{}'", product.getId(), product.getName());
+        return ProductResponse.fromEntity(product);
     }
 
     @Override
@@ -129,8 +111,22 @@ public class ProductServiceImpl implements ProductService {
         Objects.requireNonNull(id, "Product ID cannot be null.");
 
         Product product = productRepository.getOrThrow(id);
+
+        if (orderItemRepository.existsByProductId(id)) {
+            log.warn("Product deletion rejected: Product id={} is referenced in existing orders", id);
+            throw new ConflictException("Cannot delete product '" + product.getName() + "' because it is referenced in existing orders.");
+        }
+
         productRepository.delete(product);
         log.info("Deleted product id={} with name='{}'", id, product.getName());
+    }
+
+    private void applyRequest(Product product, ProductRequest request, Category category) {
+        product.setName(request.getName().trim());
+        product.setDescription(request.getDescription());
+        product.setPrice(request.getPrice());
+        product.setStockQuantity(request.getStockQuantity());
+        product.setCategory(category);
     }
 
     private void attachProductImages(Product product, List<String> imageUrls) {
