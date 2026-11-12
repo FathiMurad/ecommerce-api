@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
 @Tag(name = "Payments", description = "Endpoints for order payment processing, payment gateway interaction, and settlement")
-public class PaymentController {
+class PaymentController {
 
     private final PaymentService paymentService;
 
@@ -39,7 +39,7 @@ public class PaymentController {
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Payment processed", content = @Content(schema = @Schema(implementation = PaymentResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid payment payload", content = @Content), @ApiResponse(responseCode = "404", description = "Order not found with the specified tracking number", content = @Content), @ApiResponse(responseCode = "409", description = "Order is not payable or retry limit exceeded", content = @Content), @ApiResponse(responseCode = "422", description = "Payment amount does not match order total", content = @Content)})
     @PostMapping("/orders/{trackingNumber}")
     public ResponseEntity<PaymentResponse> chargeOrder(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Order unique tracking number", required = true) @PathVariable String trackingNumber, @Valid @RequestBody PaymentRequest request) {
-        User viewer = securityUser != null ? securityUser.getUser() : null;
+        User viewer = ControllerUtils.extractUser(securityUser);
         PaymentResponse response = paymentService.processPayment(trackingNumber, request, viewer);
         return ResponseEntity.ok(response);
     }

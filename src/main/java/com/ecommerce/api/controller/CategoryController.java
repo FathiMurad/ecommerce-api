@@ -36,7 +36,7 @@ import java.util.List;
 @RequestMapping("/api/categories")
 @RequiredArgsConstructor
 @Tag(name = "Categories", description = "Endpoints for catalog category navigation and administrative management")
-public class CategoryController {
+class CategoryController {
 
     private final CategoryService categoryService;
 
@@ -57,7 +57,7 @@ public class CategoryController {
     }
 
     @Operation(summary = "Create a new category", description = "Creates a new catalog category. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Category created successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Category name already exists or payload is invalid", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content)})
+    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Category created successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "409", description = "Category name already exists", content = @Content)})
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CategoryResponse> createCategory(@Valid @RequestBody CategoryRequest request) {
@@ -66,7 +66,7 @@ public class CategoryController {
     }
 
     @Operation(summary = "Update an existing category", description = "Updates the name and description of a category. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Category updated successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Target category name already in use by another category", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)})
+    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Category updated successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content), @ApiResponse(responseCode = "409", description = "Target category name already in use by another category", content = @Content)})
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CategoryResponse> updateCategory(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long id, @Valid @RequestBody CategoryRequest request) {

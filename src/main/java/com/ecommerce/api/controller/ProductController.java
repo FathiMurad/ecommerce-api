@@ -38,7 +38,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 @Tag(name = "Products", description = "Endpoints for catalog product browsing, searching, and administrative management")
-public class ProductController {
+class ProductController {
+
+    private static final String DEFAULT_SORT_FIELD = "id";
 
     private final ProductService productService;
 
@@ -46,7 +48,7 @@ public class ProductController {
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved paginated products", content = @Content(schema = @Schema(implementation = PagedResponse.class)))})
     @GetMapping
     public ResponseEntity<PagedResponse<ProductResponse>> getAllProducts(@Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page (max 100)") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property: id, name, price, stockQuantity") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction: asc or desc") @RequestParam(defaultValue = "asc") String sortDirection) {
-        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, SortFields.PRODUCT_SORT_FIELDS, "id");
+        Pageable pageable = toProductPageable(page, size, sortBy, sortDirection);
         PagedResponse<ProductResponse> products = productService.getAllProducts(pageable);
         return ResponseEntity.ok(products);
     }
@@ -62,8 +64,8 @@ public class ProductController {
     @Operation(summary = "Get products by Category ID (Paginated)", description = "Retrieves a paginated list of products belonging to a specific category. Public access.")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved products for category", content = @Content(schema = @Schema(implementation = PagedResponse.class))), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)})
     @GetMapping("/category/{categoryId}")
-    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long categoryId, @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction") @RequestParam(defaultValue = "asc") String sortDirection) {
-        Pageable pageable = PageRequests.from(page, size, sortBy, sortDirection, SortFields.PRODUCT_SORT_FIELDS, "id");
+    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long categoryId, @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page (max 100)") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property: id, name, price, stockQuantity") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction: asc or desc") @RequestParam(defaultValue = "asc") String sortDirection) {
+        Pageable pageable = toProductPageable(page, size, sortBy, sortDirection);
         PagedResponse<ProductResponse> products = productService.getProductsByCategoryId(categoryId, pageable);
         return ResponseEntity.ok(products);
     }
@@ -93,5 +95,9 @@ public class ProductController {
     public ResponseEntity<Void> deleteProduct(@Parameter(description = "Product unique identifier", required = true) @PathVariable Long id) {
         productService.deleteProduct(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private Pageable toProductPageable(int page, int size, String sortBy, String sortDirection) {
+        return PageRequests.from(page, size, sortBy, sortDirection, SortFields.PRODUCT_SORT_FIELDS, DEFAULT_SORT_FIELD);
     }
 }
