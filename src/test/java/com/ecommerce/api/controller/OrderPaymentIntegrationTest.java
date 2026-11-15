@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,6 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class OrderPaymentIntegrationTest {
 
+    private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("MM/yy");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -46,6 +50,10 @@ class OrderPaymentIntegrationTest {
     private EntityManager entityManager;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private String futureExpiry() {
+        return YearMonth.now().plusYears(2).format(EXPIRY_FORMATTER);
+    }
 
     private String obtainAdminToken() throws Exception {
         LoginRequest loginRequest = LoginRequest.builder().email("admin@ecommerce.com").password("Admin@123456").build();
@@ -84,12 +92,53 @@ class OrderPaymentIntegrationTest {
         mockMvc.perform(get("/api/cart").header("X-Cart-Token", cartToken)).andExpect(status().isOk()).andExpect(jsonPath("$.totalItems").value(0)).andExpect(jsonPath("$.items").isEmpty());
 
         // 4. Charge payment with matching amount -> Expect COMPLETED
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580123456789012").cardHolderName("Guest Tester").expiryDate("12/28").cvv("123").build();
+        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Guest Tester").expiryDate(futureExpiry()).cvv("123").build();
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.transactionId").isString());
 
         // 5. Verify order status advanced to CONFIRMED
         mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    @Test
+    @DisplayName("Reject CREDIT_CARD payment without required card fields with 400 Bad Request")
+    void testCreditCardPaymentWithoutCardDetailsReturns400() throws Exception {
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Missing Card Tester", "missingcard@example.com", "Rothschild 10, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
+
+        PaymentRequest incompleteCardRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).build();
+
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(incompleteCardRequest))).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Reject card payment with expired expiryDate with 400 Bad Request")
+    void testExpiredCreditCardReturns400() throws Exception {
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Expired Card Tester", "expired@example.com", "Rothschild 20, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
+
+        String expiredDate = YearMonth.now().minusMonths(1).format(EXPIRY_FORMATTER);
+        PaymentRequest expiredCardRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Expired Card Tester").expiryDate(expiredDate).cvv("123").build();
+
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(expiredCardRequest))).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -195,7 +244,7 @@ class OrderPaymentIntegrationTest {
         assertThat(productAfterCheckout.getStockQuantity()).isEqualTo(initialStock - 2);
 
         // 2. Charge using card ending in 0000 -> Simulates payment decline
-        PaymentRequest declinedPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580000000000000").cardHolderName("Decline Tester").expiryDate("12/28").cvv("123").build();
+        PaymentRequest declinedPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580000000000000").cardHolderName("Decline Tester").expiryDate(futureExpiry()).cvv("123").build();
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
 

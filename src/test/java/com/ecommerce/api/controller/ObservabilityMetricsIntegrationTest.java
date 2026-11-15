@@ -15,6 +15,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -25,6 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"management.endpoints.web.exposure.include=health,info,prometheus", "management.endpoint.prometheus.enabled=true", "management.prometheus.metrics.export.enabled=true"})
 @AutoConfigureMockMvc
 class ObservabilityMetricsIntegrationTest {
+
+    private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("MM/yy");
 
     @Autowired
     private MockMvc mockMvc;
@@ -62,7 +66,8 @@ class ObservabilityMetricsIntegrationTest {
         String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
 
         // 3. Process Approved Payment -> triggers ecommerce_payments_processed_total & latency timer
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).cardNumber("4580123456789999").amount(new BigDecimal("6.50")).build();
+        String validExpiry = YearMonth.now().plusYears(2).format(EXPIRY_FORMATTER);
+        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).cardNumber("4111111111111111").cardHolderName("Metrics Buyer").expiryDate(validExpiry).cvv("123").amount(new BigDecimal("6.50")).build();
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
 

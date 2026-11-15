@@ -199,3 +199,7 @@ Execute the full suite of integration, security, and repository tests against li
 ./mvnw clean verify
 
 ```
+### Payment Gateway Simulation
+The payment processing subsystem operates as an internal simulated gateway for development and testing:
+- **Card Payments (`CREDIT_CARD`, `DEBIT_CARD`):** Require full card details (`cardNumber` passing Luhn validation, `cardHolderName`, non-expired `expiryDate`, and `cvv`). Any 16-digit card number ending in `0000` deterministically simulates an issuing-bank decline (`FAILED`).
+- **Alternative Methods (`PAYPAL`, `CASH_ON_DELIVERY`):** Do not require card credentials and are automatically approved by the simulator.

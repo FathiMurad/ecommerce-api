@@ -3,6 +3,8 @@ package com.ecommerce.api.dto.request;
 import com.ecommerce.api.constant.MoneyConstants;
 import com.ecommerce.api.entity.Order;
 import com.ecommerce.api.entity.enums.PaymentMethod;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
@@ -12,19 +14,25 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Payload sent by the client to charge an order.
- * Card fields are optional at DTO level to support CASH_ON_DELIVERY and external redirect methods,
- * while maintaining regex constraints whenever card data is supplied.
+ * Card fields are conditionally required for CREDIT_CARD and DEBIT_CARD methods,
+ * while remaining optional for PAYPAL and CASH_ON_DELIVERY.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentRequest {
+
+    private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("MM/yy");
 
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;
@@ -33,6 +41,7 @@ public class PaymentRequest {
     @Digits(integer = MoneyConstants.PRECISION - MoneyConstants.SCALE, fraction = MoneyConstants.SCALE, message = "Payment amount format is invalid")
     private BigDecimal amount;
 
+    @ToString.Exclude
     @Pattern(regexp = "^[0-9]{16}$", message = "Card number must be exactly 16 digits")
     private String cardNumber;
 
@@ -42,6 +51,52 @@ public class PaymentRequest {
     @Pattern(regexp = "^(0[1-9]|1[0-2])/[0-9]{2}$", message = "Expiry format must be MM/YY")
     private String expiryDate;
 
+    @ToString.Exclude
     @Pattern(regexp = "^[0-9]{3,4}$", message = "CVV must be 3 or 4 digits")
     private String cvv;
+
+    @JsonIgnore
+    @AssertTrue(message = "Card number, card holder name, expiry date, and CVV are required for card payments")
+    public boolean isCardDetailsPresentWhenRequired() {
+        if (paymentMethod != PaymentMethod.CREDIT_CARD && paymentMethod != PaymentMethod.DEBIT_CARD) {
+            return true;
+        }
+        return StringUtils.hasText(cardNumber) && StringUtils.hasText(cardHolderName) && StringUtils.hasText(expiryDate) && StringUtils.hasText(cvv);
+    }
+
+    @JsonIgnore
+    @AssertTrue(message = "Card number failed Luhn checksum validation")
+    public boolean isCardNumberValid() {
+        if (cardNumber == null || !cardNumber.matches("^[0-9]{16}$")) {
+            return true;
+        }
+        return cardNumber.endsWith("0000") || passesLuhn(cardNumber);
+    }
+
+    @JsonIgnore
+    @AssertTrue(message = "Card has expired")
+    public boolean isExpiryDateNotExpired() {
+        if (expiryDate == null || !expiryDate.matches("^(0[1-9]|1[0-2])/[0-9]{2}$")) {
+            return true;
+        }
+        YearMonth expiry = YearMonth.parse(expiryDate, EXPIRY_FORMATTER);
+        return !expiry.isBefore(YearMonth.now());
+    }
+
+    private static boolean passesLuhn(String digits) {
+        int sum = 0;
+        boolean doubleDigit = false;
+        for (int i = digits.length() - 1; i >= 0; i--) {
+            int digit = digits.charAt(i) - '0';
+            if (doubleDigit) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubleDigit = !doubleDigit;
+        }
+        return sum % 10 == 0;
+    }
 }
