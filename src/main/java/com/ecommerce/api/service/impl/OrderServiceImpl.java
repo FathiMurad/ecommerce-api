@@ -15,6 +15,7 @@ import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.entity.enums.PaymentStatus;
 import com.ecommerce.api.event.OrderPlacedEvent;
 import com.ecommerce.api.exception.BadRequestException;
+import com.ecommerce.api.exception.BusinessRuleViolationException;
 import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
@@ -146,6 +147,10 @@ public class OrderServiceImpl implements OrderService {
             throw new ConflictException("Cannot transition order from " + currentStatus + " to " + newStatus);
         }
 
+        if (newStatus == OrderStatus.CONFIRMED && (order.getId() == null || !paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.COMPLETED))) {
+            throw new BusinessRuleViolationException("Order cannot be confirmed without a completed payment.");
+        }
+
         synchronizePaymentWithOrderTransition(order, newStatus);
 
         if (newStatus == OrderStatus.CANCELLED) {
@@ -173,9 +178,10 @@ public class OrderServiceImpl implements OrderService {
         paymentRepository.findByOrderId(order.getId()).ifPresent(payment -> {
             if (newStatus == OrderStatus.CANCELLED) {
                 if (payment.getStatus() == PaymentStatus.COMPLETED) {
-                    throw new ConflictException("Cannot cancel an order with a COMPLETED payment before issuing a refund.");
-                }
-                if (payment.getStatus() == PaymentStatus.PENDING) {
+                    payment.setStatus(PaymentStatus.REFUNDED);
+                    paymentRepository.save(payment);
+                    log.info("Marked payment transactionId={} as REFUNDED on cancellation of order trackingNumber={}", payment.getTransactionId(), order.getTrackingNumber());
+                } else if (payment.getStatus() == PaymentStatus.PENDING) {
                     payment.setStatus(PaymentStatus.FAILED);
                     payment.setFailureReason("Order cancelled before payment completion.");
                     paymentRepository.save(payment);

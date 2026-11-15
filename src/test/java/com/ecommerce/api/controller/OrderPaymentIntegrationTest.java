@@ -8,6 +8,8 @@ import com.ecommerce.api.dto.request.UpdateOrderStatusRequest;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.entity.enums.PaymentMethod;
+import com.ecommerce.api.entity.enums.PaymentStatus;
+import com.ecommerce.api.repository.PaymentRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.scheduler.PendingOrderExpiryJob;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -47,6 +49,9 @@ class OrderPaymentIntegrationTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
 
     @Autowired
     private EntityManager entityManager;
@@ -160,25 +165,33 @@ class OrderPaymentIntegrationTest {
         CheckoutRequest checkoutRequest = new CheckoutRequest("Lifecycle Tester", "sm@example.com", "Herzl St 10, Haifa");
         MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
 
-        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
         // 2. Illegal transition: Cannot jump directly from PENDING to SHIPPED -> Expect 409 Conflict
         UpdateOrderStatusRequest illegalJump = new UpdateOrderStatusRequest(OrderStatus.SHIPPED);
         mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(illegalJump))).andExpect(status().isConflict());
 
-        // 3. Legal transition: PENDING -> CONFIRMED
-        UpdateOrderStatusRequest confirmRequest = new UpdateOrderStatusRequest(OrderStatus.CONFIRMED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(confirmRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        // 3. Business rule guard: Cannot confirm an unpaid PENDING order -> Expect 422
+        UpdateOrderStatusRequest unpaidConfirm = new UpdateOrderStatusRequest(OrderStatus.CONFIRMED);
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(unpaidConfirm))).andExpect(status().is(422));
 
-        // 4. Legal transition: CONFIRMED -> SHIPPED
+        // 4. Complete payment -> Order automatically transitions to CONFIRMED
+        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Lifecycle Tester").expiryDate(futureExpiry()).cvv("123").build();
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        // 5. Legal transition: CONFIRMED -> SHIPPED
         UpdateOrderStatusRequest shipRequest = new UpdateOrderStatusRequest(OrderStatus.SHIPPED);
         mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(shipRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SHIPPED"));
 
-        // 5. Legal transition: SHIPPED -> DELIVERED (Terminal)
+        // 6. Legal transition: SHIPPED -> DELIVERED (Terminal)
         UpdateOrderStatusRequest deliverRequest = new UpdateOrderStatusRequest(OrderStatus.DELIVERED);
         mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(deliverRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DELIVERED"));
 
-        // 6. Terminal state guard: Cannot modify an order already in DELIVERED status -> Expect 409 Conflict
+        // 7. Terminal state guard: Cannot modify an order already in DELIVERED status -> Expect 409 Conflict
         UpdateOrderStatusRequest modifyDelivered = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
         mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(modifyDelivered))).andExpect(status().isConflict());
     }
@@ -339,9 +352,13 @@ class OrderPaymentIntegrationTest {
     }
 
     @Test
-    @DisplayName("Reject cancelling a CONFIRMED order whose payment is COMPLETED with 409 Conflict")
-    void testCancelConfirmedPaidOrderReturns409Conflict() throws Exception {
+    @DisplayName("Cancelling a CONFIRMED paid order marks payment REFUNDED and restores stock")
+    void testCancelConfirmedPaidOrderRefundsPaymentAndRestoresStock() throws Exception {
         String adminToken = obtainAdminToken();
+
+        entityManager.flush();
+        entityManager.clear();
+        int initialStock = productRepository.findById(1L).orElseThrow().getStockQuantity();
 
         // 1. Add item and checkout
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
@@ -353,6 +370,7 @@ class OrderPaymentIntegrationTest {
         MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        long orderId = checkoutNode.get("id").asLong();
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
@@ -361,9 +379,14 @@ class OrderPaymentIntegrationTest {
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(validPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
 
-        // 3. Admin attempt to CANCEL a paid order without refund must be rejected with 409 Conflict
+        // 3. Admin cancels the paid CONFIRMED order -> Payment becomes REFUNDED and stock is restored
         UpdateOrderStatusRequest cancelRequest = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(cancelRequest))).andExpect(status().isConflict());
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(cancelRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(paymentRepository.findByOrderId(orderId).orElseThrow().getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(productRepository.findById(1L).orElseThrow().getStockQuantity()).isEqualTo(initialStock);
     }
 
     @Test

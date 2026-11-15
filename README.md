@@ -8,21 +8,40 @@
 [![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A production-ready, secure, and containerized backend REST API for an enterprise supermarket e-commerce platform built with **Spring Boot 4**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
+A production-minded, secure, and containerized backend REST API for an enterprise supermarket e-commerce platform built with **Spring Boot 4.1.1**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
 
 ---
 
 ## Architectural Highlights
 
-- **Stateless Authentication & RBAC**: JWT-based authentication featuring role separation (`ROLE_CUSTOMER` vs. `ROLE_ADMIN`) with route-level authorization and HMAC-SHA256 password pepper hashing.
-- **Transactional Consistency & Pessimistic Locking**: Atomic checkout workflows enforcing strict inventory validation, balance deductions, purchase price snapshots, and automated cart clearance.
+- **Stateless Authentication & RBAC**: JWT-based authentication featuring role separation (`ROLE_CUSTOMER` vs. `ROLE_ADMIN`), route-level authorization, IDOR ownership enforcement, and HMAC-SHA256 password pepper hashing.
+- **Transactional Consistency & Atomic Inventory Control**: Atomic checkout workflows enforcing conditional SQL stock decrements (`UPDATE ... WHERE stock_quantity >= :qty`) combined with JPA optimistic locking (`@Version`), purchase price snapshots, and automated cart clearance.
 - **Asynchronous Domain Events**: Decoupled order event processing via `@TransactionalEventListener(phase = AFTER_COMMIT)` backed by a dedicated bounded `ThreadPoolTaskExecutor`.
-- **Brute-Force & DoS Mitigation**: Custom, thread-safe in-memory Token-Bucket rate limiting filter isolating client IP addresses across authentication and checkout endpoints (`HTTP 429 Too Many Requests`).
-- **Production Observability & Metrics**: Micrometer & Spring Boot Actuator integration exposing Prometheus metrics (`/actuator/prometheus`), business counters (`ecommerce.orders.placed`), and payment latency timers.
-- **Resilient Financial Transactions**: Payment gateway simulation featuring duplicate transaction prevention, financial audit logging, and automated inventory rollbacks on failure.
-- **Deterministic Order Lifecycle**: State-machine-governed order progression (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED` / `CANCELLED`), preventing illegal state transitions and automatically restoring inventory upon cancellation.
-- **Containerized Infrastructure**: Production-grade multi-stage Docker build running under an unprivileged user (`appuser`), orchestrated alongside PostgreSQL with automated health checks.
-- **Automated Quality Gate**: Comprehensive integration test suite using `MockMvc` against live PostgreSQL instances, verified via GitHub Actions CI pipeline.
+- **Brute-Force & DoS Mitigation**: Thread-safe Caffeine-backed Token-Bucket rate limiting filter isolating client IP addresses (`getRemoteAddr()`) across authentication, checkout, payment, and cart endpoints (`HTTP 429 Too Many Requests`), paired with per-email account lockout.
+- **Observability & Metrics**: Micrometer & Spring Boot Actuator integration exposing Prometheus metrics (`/actuator/prometheus`), post-commit business counters (`ecommerce.orders.created`, `ecommerce.orders.confirmed`, `ecommerce.orders.cancelled`, `ecommerce.payments.processed`), and payment latency timers (`ecommerce.payment.processing.time`).
+- **Resilient Payment & Lifecycle Management**: Single payment record per order with Luhn and expiry validation, automatic order cancellation and stock restoration after 5 consecutive payment declines, scheduled expiration of unpaid `PENDING` orders after 30 minutes (`PendingOrderExpiryJob`), and automatic `REFUNDED` transition when a paid order is cancelled.
+- **Caching & Lazy Guest Cart Lifecycle**: Caffeine product catalog cache (2-minute TTL with immediate eviction on checkout, cancellation, or product updates) and lazy guest cart persistence with daily cleanup of carts inactive for over 30 days (`GuestCartCleanupJob`).
+- **Containerized Infrastructure**: Multi-stage Docker build running under an unprivileged user (`appuser`), orchestrated alongside PostgreSQL with automated health checks.
+- **Automated Quality Gate**: 51 automated integration and service tests using `MockMvc` against a live PostgreSQL instance, verified via GitHub Actions CI.
+
+---
+
+## Design Decisions
+
+- **Inventory Concurrency**: Stock is decremented using a single conditional query (`UPDATE ... WHERE stock_quantity >= :qty`) alongside `@Version`, ensuring concurrent checkouts never oversell and losing requests receive a clean `409 Conflict` (`Insufficient stock`). Verified by `ConcurrencyIntegrationTest` (10 parallel buyers competing for 3 units).
+- **IDOR Protection**: Orders belonging to registered users return `404 Not Found` (rather than `403 Forbidden`) to non-owners, preventing tracking number enumeration.
+- **Payment Failures & Order Expiry**: A declined card keeps the order `PENDING` so the customer can retry with another card; on the 5th consecutive failure, the order is automatically cancelled and inventory is restored. Unpaid `PENDING` orders expire after 30 minutes via `PendingOrderExpiryJob`.
+- **Lazy Guest Carts**: Guest carts are created in the database only when the first item is added (`GET /api/cart` never inserts a database row) and abandoned guest carts older than 30 days are purged daily by `GuestCartCleanupJob`.
+- **Transactional Integrity of Metrics & Events**: Business counters and asynchronous `OrderPlacedEvent` listeners execute only after database transaction commit (`afterCommit` / `AFTER_COMMIT`), preventing ghost metrics or emails on rolled-back transactions.
+
+---
+
+## Known Limitations
+
+- **Simulated Payment Gateway**: Payment processing is an internal simulator (`PAYPAL` and `CASH_ON_DELIVERY` are auto-approved; cancelling a `CONFIRMED` paid order marks the payment `REFUNDED` without calling an external processor).
+- **Schema Management**: Database schema is managed via Hibernate `ddl-auto=update` rather than versioned Flyway/Liquibase migrations.
+- **Single-Instance State**: Rate limiter buckets and `@Scheduled` jobs run in-memory/per-node; multi-instance horizontal scaling would require distributed rate limiting (e.g., Redis) and distributed scheduler locks (e.g., ShedLock).
+- **Actuator Exposure**: `/actuator/prometheus` is publicly accessible for local/portfolio monitoring and should be restricted at the network or ingress layer in production.
 
 ---
 
@@ -31,14 +50,14 @@ A production-ready, secure, and containerized backend REST API for an enterprise
 | Layer | Technology |
 | :--- | :--- |
 | **Language & Platform** | Java 21 (LTS) |
-| **Framework** | Spring Boot 4.1.1 (Web, Security, Data JPA, Validation, Actuator) |
-| **Security & Cryptography** | Spring Security 6, JJWT 0.12.6, BCrypt + Global HMAC-SHA256 Pepper |
+| **Framework** | Spring Boot 4.1.1 (Web, Security, Data JPA, Validation, Cache, Actuator) |
+| **Security & Cryptography** | Spring Security (Boot 4.1.1), JJWT 0.12.6, BCrypt + Global HMAC-SHA256 Pepper |
 | **Database & ORM** | PostgreSQL 16, Hibernate 7, HikariCP Connection Pool |
-| **Concurrency & Async** | Spring Task Execution (`ThreadPoolTaskExecutor`), Domain Application Events |
+| **Caching, Concurrency & Jobs** | Caffeine Cache, `ThreadPoolTaskExecutor`, Spring `@Scheduled`, Domain Events |
 | **Observability** | Micrometer, Prometheus Metrics Registry, Spring Boot Actuator |
 | **API Documentation** | OpenAPI 3.1 / Swagger UI (`springdoc-openapi`) |
 | **Containerization** | Docker (Multi-stage build, Alpine JRE 21), Docker Compose |
-| **Testing** | JUnit 5, MockMvc, AssertJ, Spring Boot TestContext |
+| **Testing** | JUnit 5, MockMvc, AssertJ, Spring Boot TestContext (51 tests) |
 | **CI/CD** | GitHub Actions Pipeline |
 
 ---
@@ -73,9 +92,9 @@ A production-ready, secure, and containerized backend REST API for an enterprise
   |---------------|                                     |---------------|
   | id (PK)       |                                     | id (PK)       |
   | transaction_id|                                     | product_id(FK)|
-  | payment_status|                                     | image_url     |
-  +---------------+                                     +---------------+
-
+  | failed_attempt|                                     | image_url     |
+  | payment_status|                                     +---------------+
+  +---------------+
 ```
 
 ---
@@ -84,21 +103,20 @@ A production-ready, secure, and containerized backend REST API for an enterprise
 
 ### Prerequisites
 
-* **Docker Engine** & **Docker Compose**
-* **Java 21 JDK** & **Maven** (optional, wrapper `./mvnw` provided)
+- **Docker Engine** & **Docker Compose**
+- **Java 21 JDK** & **Maven** (optional, wrapper `./mvnw` provided)
 
 ### 1. Clone Repository & Setup Environment
 
 ```bash
-git clone https://github.com/FathiMurad/ecommerce-api.git
+git clone [https://github.com/FathiMurad/ecommerce-api.git](https://github.com/FathiMurad/ecommerce-api.git)
 cd ecommerce-api
 
 # Copy example environment configuration
 cp .env.example .env
-
 ```
 
-Ensure secrets in `.env` are set or use default development credentials.
+Before starting with Docker Compose, populate `JWT_SECRET_KEY` and `SECURITY_PEPPER` in `.env` (for example using `openssl rand -base64 48`), as the default configuration fails fast when required secrets are unset.
 
 ### 2. Run with Docker Compose (Recommended)
 
@@ -106,14 +124,12 @@ Build and launch the containerized application and PostgreSQL database:
 
 ```bash
 docker compose up --build -d
-
 ```
 
-The API service will automatically await PostgreSQL healthiness before starting. Verify status via:
+The API service automatically awaits PostgreSQL healthiness before starting. Verify status via:
 
 ```bash
 docker compose ps
-
 ```
 
 ### 3. Run Locally (Development Mode)
@@ -122,14 +138,12 @@ Start the PostgreSQL service container:
 
 ```bash
 docker compose up -d postgres
-
 ```
 
-Run the Spring Boot application using Maven:
+Run the Spring Boot application with the `local` profile enabled:
 
 ```bash
-./mvnw spring-boot:run
-
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 ---
@@ -138,16 +152,18 @@ Run the Spring Boot application using Maven:
 
 ### Interactive Documentation
 
-* **Swagger UI**: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
-* **OpenAPI Schema**: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+- **Swagger UI**: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+- **OpenAPI Schema**: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 
 ### Production Observability Endpoints
 
-* **Health Status**: `GET /actuator/health`
-* **Prometheus Metrics**: `GET /actuator/prometheus`
-* **Application Info**: `GET /actuator/info`
+- **Health Status**: `GET /actuator/health`
+- **Prometheus Metrics**: `GET /actuator/prometheus`
+- **Application Info**: `GET /actuator/info`
 
 ### Seeded Credentials
+
+> **Development only.** Override via `APP_INIT_ADMIN_EMAIL`, `APP_INIT_ADMIN_PASSWORD`, `APP_INIT_CUSTOMER_EMAIL`, and `APP_INIT_CUSTOMER_PASSWORD` environment variables before any deployment.
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -160,46 +176,48 @@ Run the Spring Boot application using Maven:
 
 ### Authentication & Security *(Rate Limited)*
 
-* `POST /api/auth/register` - Register a customer account and receive a JWT.
-* `POST /api/auth/login` - Authenticate and acquire bearer token.
+- `POST /api/auth/register` - Register a customer account and receive a JWT.
+- `POST /api/auth/login` - Authenticate and acquire bearer token.
 
 ### Catalog Management
 
-* `GET /api/products` - Paged and sorted product catalog (Public).
-* `GET /api/products/{id}` - Product details with associated images (Public).
-* `POST /api/products` - Create new product (*Admin only*).
-* `PUT /api/products/{id}` - Modify product metadata and inventory (*Admin only*).
-* `DELETE /api/products/{id}` - Soft/hard delete product (*Admin only*).
+- `GET /api/products` - Paged and sorted product catalog (Public).
+- `GET /api/products/{id}` - Product details with associated images (Public, cached).
+- `POST /api/products` - Create new product (*Admin only*).
+- `PUT /api/products/{id}` - Modify product metadata and inventory (*Admin only*).
+- `DELETE /api/products/{id}` - Hard delete product; returns `409 Conflict` if referenced in existing orders (*Admin only*).
 
-### Shopping Cart
+### Shopping Cart *(Rate Limited)*
 
-* `GET /api/cart` - Retrieve current session cart.
-* `POST /api/cart/items` - Add item to cart with stock pre-validation.
-* `PUT /api/cart/items/{itemId}` - Update item quantity.
-* `DELETE /api/cart/items/{itemId}` - Remove item from cart.
+- `GET /api/cart` - Retrieve current session cart (returns empty representation without DB write if none exists).
+- `POST /api/cart/items` - Add item to cart with stock pre-validation.
+- `PUT /api/cart/items/{productId}` - Update item quantity.
+- `DELETE /api/cart/items/{productId}` - Remove item from cart.
+- `DELETE /api/cart` - Clear all items from cart.
 
 ### Order Processing & Lifecycle *(Rate Limited Checkout)*
 
-* `POST /api/orders/checkout` - Atomic transaction deducting stock, creating order, and firing asynchronous events.
-* `GET /api/orders/my-orders` - Paged order history for authenticated user.
-* `GET /api/orders/{trackingNumber}` - Look up order details by tracking code.
-* `PATCH /api/orders/{trackingNumber}/status` - Advance order lifecycle state (*Admin only*).
+- `POST /api/orders/checkout` - Atomic transaction deducting stock, creating order, evicting product cache, and firing asynchronous events.
+- `GET /api/orders/my-orders` - Paged order history for authenticated user.
+- `GET /api/orders/{trackingNumber}` - Look up order details by tracking code (enforces IDOR ownership policy).
+- `PATCH /api/orders/{trackingNumber}/status` - Advance order lifecycle state (*Admin only*; blocks confirming unpaid orders and marks paid orders `REFUNDED` on cancellation).
 
-### Payments & Auditing
+### Payments & Auditing *(Rate Limited)*
 
-* `POST /api/payments/process` - Process mock transaction, record payment audit, and trigger rollback on failure.
+- `POST /api/payments/orders/{trackingNumber}` - Process simulated payment, record payment audit, and automatically cancel order / restore stock after 5 consecutive failures.
+
+### Payment Gateway Simulation
+
+The payment subsystem operates as an internal simulated gateway for development and testing:
+- **Card Payments (`CREDIT_CARD`, `DEBIT_CARD`)**: Require full card details (`cardNumber` passing Luhn validation, `cardHolderName`, non-expired `expiryDate`, and `cvv`). Any 16-digit card number ending in `0000` deterministically simulates an issuing-bank decline (`FAILED`).
+- **Alternative Methods (`PAYPAL`, `CASH_ON_DELIVERY`)**: Do not require card credentials and are automatically approved by the simulator.
 
 ---
 
 ## Running the Automated Test Suite
 
-Execute the full suite of integration, security, and repository tests against live PostgreSQL:
+Execute the full suite of 51 automated integration and service tests (JUnit 5, MockMvc, AssertJ) against a live local PostgreSQL instance:
 
 ```bash
 ./mvnw clean verify
-
 ```
-### Payment Gateway Simulation
-The payment processing subsystem operates as an internal simulated gateway for development and testing:
-- **Card Payments (`CREDIT_CARD`, `DEBIT_CARD`):** Require full card details (`cardNumber` passing Luhn validation, `cardHolderName`, non-expired `expiryDate`, and `cvv`). Any 16-digit card number ending in `0000` deterministically simulates an issuing-bank decline (`FAILED`).
-- **Alternative Methods (`PAYPAL`, `CASH_ON_DELIVERY`):** Do not require card credentials and are automatically approved by the simulator.
