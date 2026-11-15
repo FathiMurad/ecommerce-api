@@ -19,8 +19,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Filter enforcing token-bucket rate limits on sensitive endpoints (Auth, Checkout)
- * to guard against brute-force attacks and denial-of-service abuse.
+ * Filter enforcing token-bucket rate limits on sensitive endpoints (Auth, Checkout, Payment, Cart)
+ * using trusted remote addresses to guard against brute-force attacks and denial-of-service abuse.
  */
 @Slf4j
 @Component
@@ -64,14 +64,18 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             return RateLimitType.CHECKOUT;
         }
 
+        if (path.startsWith("/api/payments/")) {
+            return RateLimitType.PAYMENT;
+        }
+
+        if ((path.equals("/api/cart/items") && "POST".equalsIgnoreCase(method)) || (path.equals("/api/cart") && "GET".equalsIgnoreCase(method))) {
+            return RateLimitType.CART;
+        }
+
         return null;
     }
 
     private String extractClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.trim().isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 

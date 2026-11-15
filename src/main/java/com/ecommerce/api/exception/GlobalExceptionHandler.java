@@ -179,6 +179,13 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected internal server error occurred. Please contact support.");
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimitExceededException(RateLimitExceededException ex) {
+        log.warn("Rate limit exceeded: {}", ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder().status(HttpStatus.TOO_MANY_REQUESTS.value()).error(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase()).message(ex.getMessage()).timestamp(LocalDateTime.now()).build();
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", String.valueOf(ex.getRetryAfterSeconds())).body(errorResponse);
+    }
+
     private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status, String message) {
         ErrorResponse errorResponse = ErrorResponse.builder().status(status.value()).error(status.getReasonPhrase()).message(message).timestamp(LocalDateTime.now()).build();
         return ResponseEntity.status(status).body(errorResponse);

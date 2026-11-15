@@ -9,6 +9,7 @@ import com.ecommerce.api.exception.ConflictException;
 import com.ecommerce.api.repository.UserRepository;
 import com.ecommerce.api.security.JwtService;
 import com.ecommerce.api.security.SecurityUser;
+import com.ecommerce.api.security.ratelimit.RateLimiterService;
 import com.ecommerce.api.service.AuthenticationService;
 import com.ecommerce.api.util.Emails;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +40,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final RateLimiterService rateLimiterService;
 
     @Override
     @Transactional
@@ -68,17 +71,25 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         Objects.requireNonNull(request, "Login request cannot be null.");
 
         String normalizedEmail = Emails.normalize(request.getEmail());
+        rateLimiterService.checkEmailLoginAllowed(normalizedEmail);
 
-        Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
+        try {
+            Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
 
-        if (!(authentication.getPrincipal() instanceof SecurityUser securityUser)) {
-            throw new IllegalStateException("Unexpected authentication principal.");
+            rateLimiterService.clearFailedLogins(normalizedEmail);
+
+            if (!(authentication.getPrincipal() instanceof SecurityUser securityUser)) {
+                throw new IllegalStateException("Unexpected authentication principal.");
+            }
+
+            User authenticatedUser = securityUser.getUser();
+            log.info("User authenticated successfully: userId={}", authenticatedUser.getId());
+
+            return issueToken(authenticatedUser);
+        } catch (AuthenticationException ex) {
+            rateLimiterService.recordFailedLogin(normalizedEmail);
+            throw ex;
         }
-
-        User authenticatedUser = securityUser.getUser();
-        log.info("User authenticated successfully: userId={}", authenticatedUser.getId());
-
-        return issueToken(authenticatedUser);
     }
 
     private AuthenticationResponse issueToken(User user) {
