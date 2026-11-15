@@ -204,15 +204,13 @@ public class OrderServiceImpl implements OrderService {
         List<CartItem> sortedItems = sortItemsByProductId(cart.getItems(), item -> item.getProduct().getId());
 
         for (CartItem cartItem : sortedItems) {
-            Long productId = cartItem.getProduct().getId();
-            Product product = productRepository.getForUpdateOrThrow(productId);
+            Product product = cartItem.getProduct();
+            Long productId = product.getId();
 
-            if (product.getStockQuantity() < cartItem.getQuantity()) {
-                log.warn("Insufficient stock during checkout for product id={}: requested={}, available={}", productId, cartItem.getQuantity(), product.getStockQuantity());
+            if (productRepository.tryDecrementStock(productId, cartItem.getQuantity()) == 0) {
+                log.warn("Insufficient stock during checkout for product id={}: requested={}", productId, cartItem.getQuantity());
                 throw InsufficientStockException.of(product, cartItem.getQuantity());
             }
-
-            product.setStockQuantity(product.getStockQuantity() - cartItem.getQuantity());
 
             OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
             order.addItem(orderItem);
@@ -229,8 +227,9 @@ public class OrderServiceImpl implements OrderService {
         List<OrderItem> sortedOrderItems = sortItemsByProductId(order.getItems(), item -> item.getProduct().getId());
         for (OrderItem item : sortedOrderItems) {
             Long productId = item.getProduct().getId();
-            Product product = productRepository.getForUpdateOrThrow(productId);
-            product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+            if (productRepository.incrementStock(productId, item.getQuantity()) == 0) {
+                throw ResourceNotFoundException.of("Product", productId);
+            }
             log.info("Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
         }
     }

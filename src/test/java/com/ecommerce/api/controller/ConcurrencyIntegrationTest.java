@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,15 +48,17 @@ class ConcurrencyIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    @DisplayName("Pessimistic Lock: Prevent overselling when multiple threads checkout the last stock unit in parallel")
+    @DisplayName("Atomic Stock Update: Prevent overselling and false version collisions when multiple threads checkout in parallel")
     void testConcurrentCheckoutPreventsOverselling() throws Exception {
-        // 1. Arrange: Create a dedicated product with exactly 1 unit in inventory
+        // 1. Arrange: Create a dedicated product with exactly 3 units in inventory
         Category category = categoryRepository.findById(1L).orElseGet(() -> categoryRepository.save(Category.builder().name("Electronics").description("Test").build()));
 
-        Product limitedProduct = productRepository.saveAndFlush(Product.builder().name("Limited Edition RTX 5090").description("Exclusive single stock item").price(new BigDecimal("1999.99")).stockQuantity(1).category(category).images(Collections.emptyList()).build());
+        int initialStock = 3;
+        int concurrentUsers = 10;
+
+        Product limitedProduct = productRepository.saveAndFlush(Product.builder().name("Limited Edition RTX 5090").description("Exclusive limited stock item").price(new BigDecimal("1999.99")).stockQuantity(initialStock).category(category).images(Collections.emptyList()).build());
 
         Long productId = limitedProduct.getId();
-        int concurrentUsers = 10;
 
         // 2. Pre-create distinct shopping carts for all concurrent buyers (each containing 1 unit)
         List<String> cartTokens = new ArrayList<>();
@@ -73,7 +76,7 @@ class ConcurrencyIntegrationTest {
         CountDownLatch doneLatch = new CountDownLatch(concurrentUsers);
 
         AtomicInteger successCount = new AtomicInteger();
-        AtomicInteger conflictCount = new AtomicInteger();
+        ConcurrentLinkedQueue<String> conflictBodies = new ConcurrentLinkedQueue<>();
         AtomicInteger unexpectedStatusCount = new AtomicInteger();
 
         try (ExecutorService executor = Executors.newFixedThreadPool(concurrentUsers)) {
@@ -94,7 +97,7 @@ class ConcurrencyIntegrationTest {
                         if (statusCode == 201) {
                             successCount.incrementAndGet();
                         } else if (statusCode == 409) {
-                            conflictCount.incrementAndGet();
+                            conflictBodies.add(result.getResponse().getContentAsString());
                         } else {
                             unexpectedStatusCount.incrementAndGet();
                         }
@@ -114,10 +117,10 @@ class ConcurrencyIntegrationTest {
             assertThat(completed).as("All checkout requests should complete within timeout").isTrue();
         }
 
-        // 4. Assert: Exactly one transaction succeeded, all others rejected with 409 Conflict, and stock is exactly 0
-        assertThat(successCount.get()).as("Exactly one customer should successfully purchase the last unit").isEqualTo(1);
+        // 4. Assert: Exactly 3 transactions succeeded, 7 rejected due to InsufficientStockException, and stock is 0
+        assertThat(successCount.get()).as("Exactly %d customers should successfully purchase the available units", initialStock).isEqualTo(initialStock);
 
-        assertThat(conflictCount.get()).as("All other concurrent requests must be rejected with 409 Conflict due to InsufficientStockException").isEqualTo(concurrentUsers - 1);
+        assertThat(conflictBodies).as("Remaining concurrent requests must be rejected with 409 Conflict").hasSize(concurrentUsers - initialStock).allSatisfy(body -> assertThat(body).as("409 response must be caused by InsufficientStockException, not Hibernate version collision").contains("Insufficient stock"));
 
         assertThat(unexpectedStatusCount.get()).as("No unexpected status codes or unhandled exceptions should occur").isZero();
 

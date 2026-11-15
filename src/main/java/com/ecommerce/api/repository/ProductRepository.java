@@ -2,20 +2,19 @@ package com.ecommerce.api.repository;
 
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.exception.ResourceNotFoundException;
-import jakarta.persistence.LockModeType;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
 /**
- * Repository for products, handling stock locks and catalog queries.
+ * Repository for products, handling atomic stock updates and catalog queries.
  */
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
@@ -36,11 +35,19 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findByIdWithImages(@Param("id") Long id);
 
     /**
-     * Locks the product row in the database so other threads cannot change stock at the same time.
+     * Atomically decrements stock only if sufficient inventory is available.
+     * Deliberately omits clearAutomatically so active Cart entities remain managed.
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT p FROM Product p WHERE p.id = :id")
-    Optional<Product> findByIdWithPessimisticLock(@Param("id") Long id);
+    @Modifying(flushAutomatically = true)
+    @Query("update Product p set p.stockQuantity = p.stockQuantity - :qty, p.version = p.version + 1 where p.id = :id and p.stockQuantity >= :qty")
+    int tryDecrementStock(@Param("id") Long id, @Param("qty") int qty);
+
+    /**
+     * Atomically restores stock when an order is cancelled.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("update Product p set p.stockQuantity = p.stockQuantity + :qty, p.version = p.version + 1 where p.id = :id")
+    int incrementStock(@Param("id") Long id, @Param("qty") int qty);
 
     default Product getOrThrow(Long id) {
         return findById(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
@@ -48,9 +55,5 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     default Product getWithImagesOrThrow(Long id) {
         return findByIdWithImages(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
-    }
-
-    default Product getForUpdateOrThrow(Long id) {
-        return findByIdWithPessimisticLock(id).orElseThrow(() -> ResourceNotFoundException.of("Product", id));
     }
 }
