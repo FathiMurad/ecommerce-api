@@ -48,7 +48,10 @@ class ValidationIntegrationTest {
     void testCheckoutValidationFailure() throws Exception {
         CheckoutRequest invalidCheckout = new CheckoutRequest("", "not-an-email", "");
 
-        mockMvc.perform(post("/api/orders/checkout").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(invalidCheckout))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.validationErrors.customerName").isNotEmpty()).andExpect(jsonPath("$.validationErrors.customerEmail").isNotEmpty()).andExpect(jsonPath("$.validationErrors.shippingAddress").isNotEmpty());
+        mockMvc.perform(post("/api/orders/checkout").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(invalidCheckout)).with(request -> {
+            request.setRemoteAddr("192.168.200.1");
+            return request;
+        })).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.validationErrors.customerName").isNotEmpty()).andExpect(jsonPath("$.validationErrors.customerEmail").isNotEmpty()).andExpect(jsonPath("$.validationErrors.shippingAddress").isNotEmpty());
     }
 
     @Test
@@ -83,7 +86,10 @@ class ValidationIntegrationTest {
     void testMalformedJsonPayloadReturnsBadRequest() throws Exception {
         String malformedJson = "{\"customerName\": \"Test\", \"customerEmail\": ";
 
-        mockMvc.perform(post("/api/orders/checkout").contentType(MediaType.APPLICATION_JSON).content(malformedJson)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.message").value("Malformed JSON request body or invalid field format."));
+        mockMvc.perform(post("/api/orders/checkout").contentType(MediaType.APPLICATION_JSON).content(malformedJson).with(request -> {
+            request.setRemoteAddr("192.168.200.2");
+            return request;
+        })).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.message").value("Malformed JSON request body or invalid field format."));
     }
 
     @Test

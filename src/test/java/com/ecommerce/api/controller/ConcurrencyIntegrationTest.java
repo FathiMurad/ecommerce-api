@@ -63,8 +63,12 @@ class ConcurrencyIntegrationTest {
         // 2. Pre-create distinct shopping carts for all concurrent buyers (each containing 1 unit)
         List<String> cartTokens = new ArrayList<>();
         for (int i = 0; i < concurrentUsers; i++) {
+            final int index = i;
             AddToCartRequest addRequest = new AddToCartRequest(productId, 1);
-            MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+            MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(request -> {
+                request.setRemoteAddr("192.168.100." + index);
+                return request;
+            })).andExpect(status().isOk()).andReturn();
 
             JsonNode cartNode = objectMapper.readTree(addResult.getResponse().getContentAsString());
             cartTokens.add(cartNode.get("cartToken").asText());
@@ -91,7 +95,10 @@ class ConcurrencyIntegrationTest {
 
                         CheckoutRequest checkoutRequest = new CheckoutRequest("Concurrent Buyer " + index, "buyer" + index + "@concurrency.com", "Main Street " + (100 + index) + ", Tel Aviv");
 
-                        MvcResult result = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andReturn();
+                        MvcResult result = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest)).with(request -> {
+                            request.setRemoteAddr("192.168.100." + index);
+                            return request;
+                        })).andReturn();
 
                         int statusCode = result.getResponse().getStatus();
                         if (statusCode == 201) {
