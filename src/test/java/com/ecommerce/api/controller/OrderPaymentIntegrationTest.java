@@ -9,6 +9,7 @@ import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.entity.enums.PaymentMethod;
 import com.ecommerce.api.repository.ProductRepository;
+import com.ecommerce.api.scheduler.PendingOrderExpiryJob;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 
@@ -48,6 +50,9 @@ class OrderPaymentIntegrationTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private PendingOrderExpiryJob pendingOrderExpiryJob;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -256,5 +261,77 @@ class OrderPaymentIntegrationTest {
         entityManager.clear();
         Product productAfterFailedPayment = productRepository.findById(1L).orElseThrow();
         assertThat(productAfterFailedPayment.getStockQuantity()).isEqualTo(initialStock - 2);
+    }
+
+    @Test
+    @DisplayName("Fifth consecutive payment decline cancels the PENDING order and restores stock")
+    void testFiveConsecutivePaymentDeclinesCancelOrderAndRestoreStock() throws Exception {
+        entityManager.flush();
+        entityManager.clear();
+        Product productBefore = productRepository.findById(1L).orElseThrow();
+        int initialStock = productBefore.getStockQuantity();
+
+        // 1. Checkout 2 units
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Max Retry Tester", "maxretry@example.com", "Bialik 5, Ramat Gan");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
+
+        PaymentRequest declinedPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580000000000000").cardHolderName("Max Retry Tester").expiryDate(futureExpiry()).cvv("123").build();
+
+        // 2. Fail 5 times
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
+        }
+
+        // 3. Order must now be CANCELLED and stock restored
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        entityManager.flush();
+        entityManager.clear();
+        Product productAfter5Failures = productRepository.findById(1L).orElseThrow();
+        assertThat(productAfter5Failures.getStockQuantity()).isEqualTo(initialStock);
+    }
+
+    @Test
+    @DisplayName("PendingOrderExpiryJob cancels PENDING orders older than 30 minutes and restores stock")
+    void testExpiredPendingOrderIsCancelledAndStockRestored() throws Exception {
+        entityManager.flush();
+        entityManager.clear();
+        Product productBefore = productRepository.findById(1L).orElseThrow();
+        int initialStock = productBefore.getStockQuantity();
+
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Expiry Tester", "expiry@example.com", "Herzl 99, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        long orderId = checkoutNode.get("id").asLong();
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+
+        // Backdate created_at to 31 minutes ago
+        entityManager.createQuery("UPDATE Order o SET o.createdAt = :expiredAt WHERE o.id = :id").setParameter("expiredAt", LocalDateTime.now().minusMinutes(31)).setParameter("id", orderId).executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
+
+        pendingOrderExpiryJob.cancelExpiredPendingOrders();
+
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        entityManager.flush();
+        entityManager.clear();
+        Product productAfterExpiry = productRepository.findById(1L).orElseThrow();
+        assertThat(productAfterExpiry.getStockQuantity()).isEqualTo(initialStock);
     }
 }

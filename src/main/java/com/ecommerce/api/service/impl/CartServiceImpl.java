@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Service implementation for managing shopping carts.
@@ -34,8 +35,11 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse getOrCreateCart(User user, String cartToken) {
-        Cart cart = resolveOrCreateCart(user, cartToken);
-        return CartResponse.fromEntity(cart);
+        if (user != null) {
+            Cart cart = cartResolver.findForUser(user, cartToken).orElseGet(() -> cartResolver.createCart(user));
+            return CartResponse.fromEntity(cart);
+        }
+        return cartResolver.findGuest(cartToken).map(CartResponse::fromEntity).orElseGet(CartResponse::empty);
     }
 
     @Override
@@ -43,15 +47,16 @@ public class CartServiceImpl implements CartService {
     public CartResponse addToCart(User user, String cartToken, AddToCartRequest request) {
         Objects.requireNonNull(request, "Add to cart request cannot be null.");
 
-        Cart cart = resolveOrCreateCart(user, cartToken);
         Product product = productRepository.getWithImagesOrThrow(request.productId());
+        Optional<Cart> existingCart = findExistingCart(user, cartToken);
 
-        CartItem existingItem = findCartItem(cart, product.getId());
+        CartItem existingItem = existingCart.map(c -> findCartItem(c, product.getId())).orElse(null);
         long existingQuantity = existingItem != null ? existingItem.getQuantity() : 0L;
 
         long targetQuantity = existingQuantity + request.quantity();
         validateStockAvailability(product, targetQuantity);
 
+        Cart cart = existingCart.orElseGet(() -> cartResolver.createCart(user));
         cart.addProduct(product, request.quantity());
         log.info("Added product id={} quantity={} to cart id={}", product.getId(), request.quantity(), cart.getId());
 
@@ -64,7 +69,7 @@ public class CartServiceImpl implements CartService {
         Objects.requireNonNull(productId, "Product ID cannot be null.");
         Objects.requireNonNull(request, "Update cart item request cannot be null.");
 
-        Cart cart = resolveOrCreateCart(user, cartToken);
+        Cart cart = findExistingCart(user, cartToken).orElseThrow(() -> new ResourceNotFoundException("Item with product id " + productId + " not found in cart."));
         CartItem targetItem = findCartItemOrThrow(cart, productId);
 
         Product product = productRepository.getOrThrow(productId);
@@ -81,7 +86,12 @@ public class CartServiceImpl implements CartService {
     public CartResponse removeCartItem(User user, String cartToken, Long productId) {
         Objects.requireNonNull(productId, "Product ID cannot be null.");
 
-        Cart cart = resolveOrCreateCart(user, cartToken);
+        Optional<Cart> existing = findExistingCart(user, cartToken);
+        if (existing.isEmpty()) {
+            return CartResponse.empty();
+        }
+
+        Cart cart = existing.get();
         cart.removeProduct(productId);
         log.info("Removed product id={} from cart id={}", productId, cart.getId());
 
@@ -91,16 +101,17 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public void clearCart(User user, String cartToken) {
-        Cart cart = resolveOrCreateCart(user, cartToken);
-        cart.clear();
-        log.info("Cleared cart id={}", cart.getId());
+        findExistingCart(user, cartToken).ifPresent(cart -> {
+            cart.clear();
+            log.info("Cleared cart id={}", cart.getId());
+        });
     }
 
-    private Cart resolveOrCreateCart(User user, String cartToken) {
+    private Optional<Cart> findExistingCart(User user, String cartToken) {
         if (user != null) {
-            return cartResolver.findForUser(user, cartToken).orElseGet(() -> cartResolver.createCart(user));
+            return cartResolver.findForUser(user, cartToken);
         }
-        return cartResolver.findGuest(cartToken).orElseGet(() -> cartResolver.createCart(null));
+        return cartResolver.findGuest(cartToken);
     }
 
     private void validateStockAvailability(Product product, long requestedQuantity) {

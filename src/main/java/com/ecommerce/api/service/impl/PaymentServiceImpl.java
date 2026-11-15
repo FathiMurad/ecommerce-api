@@ -91,8 +91,9 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setFailureReason(outcome.failureReason());
 
         if (outcome.paymentStatus() == PaymentStatus.FAILED) {
-            payment.setFailedAttempts(currentFailures + 1);
-            log.warn("Payment declined for trackingNumber={}, transactionId={}, attempt={}", order.getTrackingNumber(), payment.getTransactionId(), payment.getFailedAttempts());
+            int updatedFailures = currentFailures + 1;
+            payment.setFailedAttempts(updatedFailures);
+            log.warn("Payment declined for trackingNumber={}, transactionId={}, attempt={}", order.getTrackingNumber(), payment.getTransactionId(), updatedFailures);
         } else {
             log.info("Payment completed successfully for trackingNumber={}, transactionId={}, amount={}", order.getTrackingNumber(), payment.getTransactionId(), payment.getAmount());
         }
@@ -101,6 +102,9 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (outcome.orderStatusOrNull() != null) {
             orderService.updateOrderStatus(order.getTrackingNumber(), outcome.orderStatusOrNull());
+        } else if (outcome.paymentStatus() == PaymentStatus.FAILED && savedPayment.getFailedAttempts() != null && savedPayment.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+            log.warn("Maximum payment retry attempts ({}) reached for trackingNumber={}. Cancelling order and restoring stock.", MAX_FAILED_ATTEMPTS, order.getTrackingNumber());
+            orderService.updateOrderStatus(order.getTrackingNumber(), OrderStatus.CANCELLED);
         }
 
         return PaymentResponse.fromEntity(savedPayment);

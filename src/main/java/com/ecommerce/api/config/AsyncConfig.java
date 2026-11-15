@@ -6,16 +6,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
 
 /**
- * Thread pool and asynchronous task execution configuration for system events.
+ * Thread pool, scheduling, and asynchronous task execution configuration for system events.
  */
 @Slf4j
 @Configuration
 @EnableAsync
+@EnableScheduling
 @SuppressWarnings("WeakerAccess")
 public class AsyncConfig implements AsyncConfigurer {
 

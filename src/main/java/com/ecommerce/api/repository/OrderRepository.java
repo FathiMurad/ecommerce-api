@@ -1,6 +1,7 @@
 package com.ecommerce.api.repository;
 
 import com.ecommerce.api.entity.Order;
+import com.ecommerce.api.entity.enums.OrderStatus;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -8,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
@@ -24,6 +26,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByCustomerEmailIgnoreCase(String customerEmail, Pageable pageable);
 
     Page<Order> findByUserId(Long userId, Pageable pageable);
+
+    Page<Order> findByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff, Pageable pageable);
 
     default Order getByTrackingNumberOrThrow(String trackingNumber) {
         return findByTrackingNumberWithItems(trackingNumber).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
