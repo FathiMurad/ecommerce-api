@@ -12,6 +12,7 @@ import com.ecommerce.api.entity.OrderItem;
 import com.ecommerce.api.entity.Product;
 import com.ecommerce.api.entity.User;
 import com.ecommerce.api.entity.enums.OrderStatus;
+import com.ecommerce.api.entity.enums.PaymentStatus;
 import com.ecommerce.api.event.OrderPlacedEvent;
 import com.ecommerce.api.exception.BadRequestException;
 import com.ecommerce.api.exception.ConflictException;
@@ -19,6 +20,7 @@ import com.ecommerce.api.exception.EmptyCartException;
 import com.ecommerce.api.exception.InsufficientStockException;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.OrderRepository;
+import com.ecommerce.api.repository.PaymentRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.security.OrderAccessPolicy;
 import com.ecommerce.api.service.CartResolver;
@@ -59,6 +61,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CartResolver cartResolver;
     private final ProductRepository productRepository;
+    private final PaymentRepository paymentRepository;
     private final OrderAccessPolicy orderAccessPolicy;
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
@@ -68,6 +71,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
     public OrderResponse checkout(User user, String cartToken, CheckoutRequest request) {
         Objects.requireNonNull(request, "Checkout request cannot be null.");
 
@@ -142,6 +146,8 @@ public class OrderServiceImpl implements OrderService {
             throw new ConflictException("Cannot transition order from " + currentStatus + " to " + newStatus);
         }
 
+        synchronizePaymentWithOrderTransition(order, newStatus);
+
         if (newStatus == OrderStatus.CANCELLED) {
             restoreStockForOrder(order);
         }
@@ -157,6 +163,25 @@ public class OrderServiceImpl implements OrderService {
 
         log.info("Order status updated for trackingNumber={}: {} -> {}", trackingNumber, currentStatus, newStatus);
         return OrderResponse.fromEntity(updatedOrder);
+    }
+
+    private void synchronizePaymentWithOrderTransition(Order order, OrderStatus newStatus) {
+        if (order.getId() == null) {
+            return;
+        }
+
+        paymentRepository.findByOrderId(order.getId()).ifPresent(payment -> {
+            if (newStatus == OrderStatus.CANCELLED) {
+                if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                    throw new ConflictException("Cannot cancel an order with a COMPLETED payment before issuing a refund.");
+                }
+                if (payment.getStatus() == PaymentStatus.PENDING) {
+                    payment.setStatus(PaymentStatus.FAILED);
+                    payment.setFailureReason("Order cancelled before payment completion.");
+                    paymentRepository.save(payment);
+                }
+            }
+        });
     }
 
     private CustomerDetails resolveCustomerDetails(User user, CheckoutRequest request) {

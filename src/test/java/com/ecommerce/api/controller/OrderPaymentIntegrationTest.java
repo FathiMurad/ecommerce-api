@@ -303,8 +303,11 @@ class OrderPaymentIntegrationTest {
     @Test
     @DisplayName("PendingOrderExpiryJob cancels PENDING orders older than 30 minutes and restores stock")
     void testExpiredPendingOrderIsCancelledAndStockRestored() throws Exception {
+        // Settle any pre-existing expired PENDING orders left in the shared test DB before capturing baseline stock
+        pendingOrderExpiryJob.cancelExpiredPendingOrders();
         entityManager.flush();
         entityManager.clear();
+
         Product productBefore = productRepository.findById(1L).orElseThrow();
         int initialStock = productBefore.getStockQuantity();
 
@@ -320,7 +323,7 @@ class OrderPaymentIntegrationTest {
         long orderId = checkoutNode.get("id").asLong();
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
 
-        // Backdate created_at to 31 minutes ago
+        // Backdate createdAt to 31 minutes ago
         entityManager.createQuery("UPDATE Order o SET o.createdAt = :expiredAt WHERE o.id = :id").setParameter("expiredAt", LocalDateTime.now().minusMinutes(31)).setParameter("id", orderId).executeUpdate();
         entityManager.flush();
         entityManager.clear();
@@ -333,5 +336,57 @@ class OrderPaymentIntegrationTest {
         entityManager.clear();
         Product productAfterExpiry = productRepository.findById(1L).orElseThrow();
         assertThat(productAfterExpiry.getStockQuantity()).isEqualTo(initialStock);
+    }
+
+    @Test
+    @DisplayName("Reject cancelling a CONFIRMED order whose payment is COMPLETED with 409 Conflict")
+    void testCancelConfirmedPaidOrderReturns409Conflict() throws Exception {
+        String adminToken = obtainAdminToken();
+
+        // 1. Add item and checkout
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Paid Cancel Tester", "paidcancel@example.com", "Dizengoff 50, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
+
+        // 2. Complete payment -> Order becomes CONFIRMED, Payment becomes COMPLETED
+        PaymentRequest validPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Paid Cancel Tester").expiryDate(futureExpiry()).cvv("123").build();
+
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(validPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        // 3. Admin attempt to CANCEL a paid order without refund must be rejected with 409 Conflict
+        UpdateOrderStatusRequest cancelRequest = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(cancelRequest))).andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("GET /api/products/{id} reflects updated stock immediately after checkout without stale cache")
+    void testProductCacheEvictedOnCheckout() throws Exception {
+        // 1. Prime the products cache via GET /api/products/1
+        MvcResult initialGet = mockMvc.perform(get("/api/products/1")).andExpect(status().isOk()).andReturn();
+        int initialStock = objectMapper.readTree(initialGet.getResponse().getContentAsString()).get("stockQuantity").asInt();
+
+        // 2. Add 2 units and checkout
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Cache Tester", "cache@example.com", "Allenby 10, Tel Aviv");
+        mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated());
+
+        // Simulate a separate HTTP request's persistence context while keeping Caffeine L2 cache intact
+        entityManager.flush();
+        entityManager.clear();
+
+        // 3. Immediately query GET /api/products/1 again -> Must reflect decremented stock
+        mockMvc.perform(get("/api/products/1")).andExpect(status().isOk()).andExpect(jsonPath("$.stockQuantity").value(initialStock - 2));
     }
 }

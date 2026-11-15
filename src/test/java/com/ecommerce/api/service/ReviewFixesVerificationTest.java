@@ -71,7 +71,7 @@ class ReviewFixesVerificationTest {
     }
 
     @Test
-    @DisplayName("Declined payment leaves order PENDING and blocks after 5 failed attempts with 409 Conflict")
+    @DisplayName("Declined payment leaves order PENDING for first 4 attempts, cancels on 5th, and blocks 6th with 409 Conflict")
     void shouldKeepOrderPendingOnDeclineAndBlockAfterFiveAttempts() throws Exception {
         MvcResult cartRes = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(new AddToCartRequest(1L, 1)))).andExpect(status().isOk()).andReturn();
         String cartToken = objectMapper.readTree(cartRes.getResponse().getContentAsString()).get("cartToken").asText();
@@ -84,12 +84,17 @@ class ReviewFixesVerificationTest {
 
         PaymentRequest declinedRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(amount).cardNumber("4580000000000000").cardHolderName("Retry Tester").expiryDate("12/28").cvv("123").build();
 
-        // Attempts 1..5 return 200 with FAILED payment status, order stays PENDING
-        for (int attempt = 1; attempt <= 5; attempt++) {
+        // Attempts 1..4 return 200 with FAILED payment status, order stays PENDING
+        for (int attempt = 1; attempt <= 4; attempt++) {
             mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
 
             mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING"));
         }
+
+        // 5th attempt returns 200 with FAILED payment status and automatically cancels the order
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
+
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
 
         // 6th attempt must be rejected with 409 Conflict
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedRequest))).andExpect(status().isConflict());
@@ -105,7 +110,7 @@ class ReviewFixesVerificationTest {
         MvcResult orderRes = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkout))).andExpect(status().isCreated()).andReturn();
         String trackingNumber = objectMapper.readTree(orderRes.getResponse().getContentAsString()).get("trackingNumber").asText();
 
-        PaymentRequest wrongAmountRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(new BigDecimal("999.99")).cardNumber("4580123456789012").cardHolderName("Mismatch Tester").expiryDate("12/28").cvv("123").build();
+        PaymentRequest wrongAmountRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(new BigDecimal("999.99")).cardNumber("4111111111111111").cardHolderName("Mismatch Tester").expiryDate("12/28").cvv("123").build();
 
         mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(wrongAmountRequest))).andExpect(status().is(422));
     }
