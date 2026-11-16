@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,7 @@ class PaymentController {
 
     private final PaymentService paymentService;
 
-    @Operation(summary = "Charge and settle order payment", description = "Validates payment details, processes the payment through the built-in simulated gateway, records the transaction, and advances the order to CONFIRMED on approval. A declined card keeps the order PENDING (max 5 attempts).", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Charge and settle order payment", description = "Validates payment details, processes the payment through the built-in simulated gateway, records the transaction, and advances the order to CONFIRMED on approval. A declined card keeps the order PENDING (max 5 attempts).")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Payment processed", content = @Content(schema = @Schema(implementation = PaymentResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid payment payload", content = @Content), @ApiResponse(responseCode = "404", description = "Order not found with the specified tracking number", content = @Content), @ApiResponse(responseCode = "409", description = "Order is not payable or retry limit exceeded", content = @Content), @ApiResponse(responseCode = "422", description = "Payment amount does not match order total", content = @Content)})
     @PostMapping("/orders/{trackingNumber}")
     public ResponseEntity<PaymentResponse> chargeOrder(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Order unique tracking number", required = true) @PathVariable String trackingNumber, @Valid @RequestBody PaymentRequest request) {

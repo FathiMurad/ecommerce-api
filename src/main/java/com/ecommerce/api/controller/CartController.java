@@ -12,7 +12,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +39,7 @@ class CartController {
 
     private final CartService cartService;
 
-    @Operation(summary = "Get or create active shopping cart", description = "Retrieves the active cart for the authenticated user or anonymous session token. Provisions a new cart if none exists.", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Get active shopping cart", description = "Retrieves the active cart for an authenticated user or anonymous session token (returns empty cart without DB write if none exists).")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved active shopping cart", content = @Content(schema = @Schema(implementation = CartResponse.class)))})
     @GetMapping
     public ResponseEntity<CartResponse> getCart(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (UUID)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken) {
@@ -49,7 +48,7 @@ class CartController {
         return ResponseEntity.ok(cart);
     }
 
-    @Operation(summary = "Add an item to the shopping cart", description = "Appends a product or increments its quantity in the shopping cart.", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Add an item to the shopping cart", description = "Appends a product or increments its quantity in the shopping cart.")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Item added to cart successfully", content = @Content(schema = @Schema(implementation = CartResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid payload", content = @Content), @ApiResponse(responseCode = "404", description = "Product not found", content = @Content), @ApiResponse(responseCode = "409", description = "Insufficient product stock", content = @Content)})
     @PostMapping("/items")
     public ResponseEntity<CartResponse> addItemToCart(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (UUID)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken, @Valid @RequestBody AddToCartRequest request) {
@@ -58,7 +57,7 @@ class CartController {
         return ResponseEntity.ok(cart);
     }
 
-    @Operation(summary = "Update item quantity in cart", description = "Sets an exact quantity for a specific product inside the cart.", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Update item quantity in cart", description = "Sets an exact quantity for a specific product inside the cart.")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Cart item quantity updated successfully", content = @Content(schema = @Schema(implementation = CartResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid quantity payload", content = @Content), @ApiResponse(responseCode = "404", description = "Product not found in cart", content = @Content), @ApiResponse(responseCode = "409", description = "Insufficient product stock", content = @Content)})
     @PutMapping("/items/{productId}")
     public ResponseEntity<CartResponse> updateItemQuantity(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (UUID)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken, @Parameter(description = "Product ID to update", required = true) @PathVariable Long productId, @Valid @RequestBody UpdateCartItemRequest request) {
@@ -67,7 +66,7 @@ class CartController {
         return ResponseEntity.ok(cart);
     }
 
-    @Operation(summary = "Remove an item from cart", description = "Completely removes a line item from the shopping cart by product ID.", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Remove an item from cart", description = "Completely removes a line item from the shopping cart by product ID.")
     @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Item removed successfully", content = @Content(schema = @Schema(implementation = CartResponse.class)))})
     @DeleteMapping("/items/{productId}")
     public ResponseEntity<CartResponse> removeItemFromCart(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (UUID)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken, @Parameter(description = "Product ID to remove", required = true) @PathVariable Long productId) {
@@ -76,7 +75,7 @@ class CartController {
         return ResponseEntity.ok(cart);
     }
 
-    @Operation(summary = "Clear shopping cart", description = "Removes all items from the active shopping cart.", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(summary = "Clear shopping cart", description = "Removes all items from the active shopping cart.")
     @ApiResponses(value = {@ApiResponse(responseCode = "204", description = "Cart cleared successfully")})
     @DeleteMapping
     public ResponseEntity<Void> clearCart(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (UUID)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken) {
