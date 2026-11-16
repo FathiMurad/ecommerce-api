@@ -33,13 +33,20 @@ public class PendingOrderExpiryJob {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(EXPIRY_MINUTES);
         Page<Order> expiredPage = orderRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff, PageRequest.of(0, BATCH_SIZE));
 
+        int cancelledCount = 0;
         for (Order order : expiredPage.getContent()) {
             try {
-                log.warn("Cancelling expired PENDING order trackingNumber={} created at {}", order.getTrackingNumber(), order.getCreatedAt());
-                orderService.updateOrderStatus(order.getTrackingNumber(), OrderStatus.CANCELLED);
+                if (orderService.cancelIfPending(order.getTrackingNumber())) {
+                    cancelledCount++;
+                    log.warn("Cancelled expired PENDING order trackingNumber={} created at {}", order.getTrackingNumber(), order.getCreatedAt());
+                }
             } catch (Exception ex) {
                 log.error("Failed to cancel expired PENDING order trackingNumber={}: {}", order.getTrackingNumber(), ex.getMessage(), ex);
             }
+        }
+
+        if (cancelledCount > 0) {
+            log.info("PendingOrderExpiryJob cancelled {} expired PENDING orders", cancelledCount);
         }
     }
 }

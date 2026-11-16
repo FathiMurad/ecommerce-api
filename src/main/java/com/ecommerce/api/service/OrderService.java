@@ -21,4 +21,6 @@ public interface OrderService {
     PagedResponse<OrderResponse> getMyOrders(User user, Pageable pageable);
 
     OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus);
+
+    boolean cancelIfPending(String trackingNumber);
 }

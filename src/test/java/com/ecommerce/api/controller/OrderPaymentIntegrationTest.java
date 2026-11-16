@@ -12,6 +12,7 @@ import com.ecommerce.api.entity.enums.PaymentStatus;
 import com.ecommerce.api.repository.PaymentRepository;
 import com.ecommerce.api.repository.ProductRepository;
 import com.ecommerce.api.scheduler.PendingOrderExpiryJob;
+import com.ecommerce.api.service.OrderService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -58,6 +59,9 @@ class OrderPaymentIntegrationTest {
 
     @Autowired
     private PendingOrderExpiryJob pendingOrderExpiryJob;
+
+    @Autowired
+    private OrderService orderService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -411,5 +415,67 @@ class OrderPaymentIntegrationTest {
 
         // 3. Immediately query GET /api/products/1 again -> Must reflect decremented stock
         mockMvc.perform(get("/api/products/1")).andExpect(status().isOk()).andExpect(jsonPath("$.stockQuantity").value(initialStock - 2));
+    }
+
+    @Test
+    @DisplayName("cancelIfPending skips already CONFIRMED paid order without refunding or restoring stock")
+    void testCancelIfPendingSkipsConfirmedOrder() throws Exception {
+        entityManager.flush();
+        entityManager.clear();
+        int initialStock = productRepository.findById(1L).orElseThrow().getStockQuantity();
+
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Skip Expiry Tester", "skipexpiry@example.com", "Allenby 20, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
+        long orderId = checkoutNode.get("id").asLong();
+        String trackingNumber = checkoutNode.get("trackingNumber").asText();
+        BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
+
+        PaymentRequest validPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Skip Expiry Tester").expiryDate(futureExpiry()).cvv("123").build();
+
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(validPayment))).andExpect(status().isOk());
+
+        boolean cancelled = orderService.cancelIfPending(trackingNumber);
+        assertThat(cancelled).isFalse();
+
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(paymentRepository.findByOrderId(orderId).orElseThrow().getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(productRepository.findById(1L).orElseThrow().getStockQuantity()).isEqualTo(initialStock - 1);
+    }
+
+    @Test
+    @DisplayName("cancelIfPending cancels PENDING order and restores product stock")
+    void testCancelIfPendingCancelsPendingOrderAndRestoresStock() throws Exception {
+        entityManager.flush();
+        entityManager.clear();
+        int initialStock = productRepository.findById(1L).orElseThrow().getStockQuantity();
+
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        CheckoutRequest checkoutRequest = new CheckoutRequest("Cancel Pending Tester", "cancelpending@example.com", "Allenby 30, Tel Aviv");
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+
+        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
+
+        boolean cancelled = orderService.cancelIfPending(trackingNumber);
+        assertThat(cancelled).isTrue();
+
+        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(productRepository.findById(1L).orElseThrow().getStockQuantity()).isEqualTo(initialStock);
     }
 }

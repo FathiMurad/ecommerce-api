@@ -151,6 +151,27 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessRuleViolationException("Order cannot be confirmed without a completed payment.");
         }
 
+        Order updatedOrder = applyStatusChange(order, currentStatus, newStatus);
+        return OrderResponse.fromEntity(updatedOrder);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true)
+    public boolean cancelIfPending(String trackingNumber) {
+        Objects.requireNonNull(trackingNumber, "Tracking number cannot be null.");
+
+        Order order = orderRepository.getByTrackingNumberOrThrow(trackingNumber.trim());
+        if (order.getStatus() != OrderStatus.PENDING) {
+            log.info("Skipping expiry for trackingNumber={}: status is already {}", trackingNumber, order.getStatus());
+            return false;
+        }
+
+        applyStatusChange(order, OrderStatus.PENDING, OrderStatus.CANCELLED);
+        return true;
+    }
+
+    private Order applyStatusChange(Order order, OrderStatus currentStatus, OrderStatus newStatus) {
         synchronizePaymentWithOrderTransition(order, newStatus);
 
         if (newStatus == OrderStatus.CANCELLED) {
@@ -166,8 +187,8 @@ public class OrderServiceImpl implements OrderService {
             afterCommit(() -> meterRegistry.counter("ecommerce.orders.cancelled").increment());
         }
 
-        log.info("Order status updated for trackingNumber={}: {} -> {}", trackingNumber, currentStatus, newStatus);
-        return OrderResponse.fromEntity(updatedOrder);
+        log.info("Order status updated for trackingNumber={}: {} -> {}", order.getTrackingNumber(), currentStatus, newStatus);
+        return updatedOrder;
     }
 
     private void synchronizePaymentWithOrderTransition(Order order, OrderStatus newStatus) {
