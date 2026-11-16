@@ -18,17 +18,13 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Enterprise database seeder executing upon application startup.
- * Idempotently initializes and synchronizes System Administrator & Default Customer credentials,
- * provisions default shopping carts, and populates the supermarket catalog.
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -41,16 +37,16 @@ public class DataSeeder implements CommandLineRunner {
     private final CartRepository cartRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.init.admin-email:${app.init.admin.email:admin@ecommerce.com}}")
+    @Value("${app.init.admin-email:${app.init.admin.email:}}")
     private String adminEmail;
 
-    @Value("${app.init.admin-password:${app.init.admin.password:Admin123456!}}")
+    @Value("${app.init.admin-password:${app.init.admin.password:}}")
     private String adminPassword;
 
-    @Value("${app.init.customer-email:${app.init.customer.email:customer@ecommerce.com}}")
+    @Value("${app.init.customer-email:${app.init.customer.email:}}")
     private String customerEmail;
 
-    @Value("${app.init.customer-password:${app.init.customer.password:Customer123456!}}")
+    @Value("${app.init.customer-password:${app.init.customer.password:}}")
     private String customerPassword;
 
     private static final String IMAGE_BASE_PATH = "/images/products/";
@@ -62,30 +58,34 @@ public class DataSeeder implements CommandLineRunner {
         seedSupermarketCatalog();
     }
 
-    /**
-     * Idempotently provisions or updates credentials for System Administrator and Default Customer.
-     * Evaluates existing password matches to prevent costly BCrypt re-hashing on every boot.
-     */
     private void seedUsersAndCarts() {
-        String normalizedAdminEmail = adminEmail.trim().toLowerCase();
-        if (!userRepository.existsByEmail(normalizedAdminEmail)) {
-            User admin = User.builder().firstName("Super").lastName("Admin").email(normalizedAdminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
-            userRepository.save(admin);
-            log.info("Default Admin initialized with email={}", normalizedAdminEmail);
+        if (!StringUtils.hasText(adminEmail) || !StringUtils.hasText(adminPassword)) {
+            log.warn("Admin bootstrap skipped: ADMIN_EMAIL / ADMIN_PASSWORD not configured.");
         } else {
-            log.info("Admin user already exists. Preserving existing admin credentials without overwriting.");
+            String normalizedAdminEmail = adminEmail.trim().toLowerCase();
+            if (!userRepository.existsByEmail(normalizedAdminEmail)) {
+                User admin = User.builder().firstName("Super").lastName("Admin").email(normalizedAdminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
+                userRepository.save(admin);
+                log.info("Default Admin initialized with email={}", normalizedAdminEmail);
+            } else {
+                log.info("Admin user already exists. Preserving existing admin credentials without overwriting.");
+            }
         }
 
-        String normalizedCustomerEmail = customerEmail.trim().toLowerCase();
-        if (!userRepository.existsByEmail(normalizedCustomerEmail)) {
-            User customer = User.builder().firstName("Default").lastName("Customer").email(normalizedCustomerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
-            User savedCustomer = userRepository.save(customer);
-
-            Cart customerCart = Cart.builder().user(savedCustomer).cartToken(UUID.randomUUID().toString()).build();
-            cartRepository.save(customerCart);
-            log.info("Default Customer and initial cart initialized with email={}", normalizedCustomerEmail);
+        if (!StringUtils.hasText(customerEmail) || !StringUtils.hasText(customerPassword)) {
+            log.warn("Customer bootstrap skipped: CUSTOMER_EMAIL / CUSTOMER_PASSWORD not configured.");
         } else {
-            log.info("Default Customer already exists. Preserving existing customer credentials.");
+            String normalizedCustomerEmail = customerEmail.trim().toLowerCase();
+            if (!userRepository.existsByEmail(normalizedCustomerEmail)) {
+                User customer = User.builder().firstName("Default").lastName("Customer").email(normalizedCustomerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
+                User savedCustomer = userRepository.save(customer);
+
+                Cart customerCart = Cart.builder().user(savedCustomer).cartToken(UUID.randomUUID().toString()).build();
+                cartRepository.save(customerCart);
+                log.info("Default Customer and initial cart initialized with email={}", normalizedCustomerEmail);
+            } else {
+                log.info("Default Customer already exists. Preserving existing customer credentials.");
+            }
         }
     }
 
