@@ -22,15 +22,15 @@ A production-minded, secure, and containerized backend REST API for an enterpris
 - **Resilient Payment & Lifecycle Management**: Single payment record per order with Luhn and expiry validation, automatic order cancellation and stock restoration after 5 consecutive payment declines, scheduled expiration of unpaid `PENDING` orders after 30 minutes (`PendingOrderExpiryJob`), and automatic `REFUNDED` transition when a paid order is cancelled.
 - **Caching & Lazy Guest Cart Lifecycle**: Caffeine product catalog cache (2-minute TTL with immediate eviction on checkout, cancellation, or product updates) and lazy guest cart persistence with daily cleanup of carts inactive for over 30 days (`GuestCartCleanupJob`).
 - **Containerized Infrastructure**: Multi-stage Docker build running under an unprivileged user (`appuser`), orchestrated alongside PostgreSQL with automated health checks.
-- **Automated Quality Gate**: 51 automated integration and service tests using `MockMvc` against a live PostgreSQL instance, verified via GitHub Actions CI.
+- **Automated Quality Gate**: 55 automated integration and service tests using `MockMvc` against a live PostgreSQL instance, verified via GitHub Actions CI.
 
 ---
 
 ## Design Decisions
 
-- **Inventory Concurrency**: Stock is decremented using a single conditional query (`UPDATE ... WHERE stock_quantity >= :qty`) alongside `@Version`, ensuring concurrent checkouts never oversell and losing requests receive a clean `409 Conflict` (`Insufficient stock`). Verified by `ConcurrencyIntegrationTest` (10 parallel buyers competing for 3 units).
+- **Inventory Concurrency**: Stock is decremented using a single conditional query (`UPDATE ... WHERE stock_quantity >= :qty`) alongside `@Version`, ensuring concurrent checkouts never oversell and losing requests receive a clean `409 Conflict` (`Insufficient stock`). Verified by `ConcurrencyIntegrationTest` (both 10 parallel buyers competing for 3 units and duplicate concurrent checkouts on the same cart token).
 - **IDOR Protection**: Orders belonging to registered users return `404 Not Found` (rather than `403 Forbidden`) to non-owners, preventing tracking number enumeration.
-- **Payment Failures & Order Expiry**: A declined card keeps the order `PENDING` so the customer can retry with another card; on the 5th consecutive failure, the order is automatically cancelled and inventory is restored. Unpaid `PENDING` orders expire after 30 minutes via `PendingOrderExpiryJob`.
+- **Payment Failures & Order Expiry**: A declined card keeps the order `PENDING` so the customer can retry with another card; on the 5th consecutive failure, the order is automatically cancelled and inventory is restored. Unpaid `PENDING` orders expire after 30 minutes via `PendingOrderExpiryJob` using `cancelIfPending` so an order paid concurrently is never cancelled.
 - **Lazy Guest Carts**: Guest carts are created in the database only when the first item is added (`GET /api/cart` never inserts a database row) and abandoned guest carts older than 30 days are purged daily by `GuestCartCleanupJob`.
 - **Transactional Integrity of Metrics & Events**: Business counters and asynchronous `OrderPlacedEvent` listeners execute only after database transaction commit (`afterCommit` / `AFTER_COMMIT`), preventing ghost metrics or emails on rolled-back transactions.
 
@@ -55,9 +55,9 @@ A production-minded, secure, and containerized backend REST API for an enterpris
 | **Database & ORM** | PostgreSQL 16, Hibernate 7, HikariCP Connection Pool |
 | **Caching, Concurrency & Jobs** | Caffeine Cache, `ThreadPoolTaskExecutor`, Spring `@Scheduled`, Domain Events |
 | **Observability** | Micrometer, Prometheus Metrics Registry, Spring Boot Actuator |
-| **API Documentation** | OpenAPI 3.1 / Swagger UI (`springdoc-openapi`) |
+| **API Documentation** | OpenAPI 3.1 / Swagger UI (`springdoc-openapi` 3.0.1) |
 | **Containerization** | Docker (Multi-stage build, Alpine JRE 21), Docker Compose |
-| **Testing** | JUnit 5, MockMvc, AssertJ, Spring Boot TestContext (51 tests) |
+| **Testing** | JUnit 5, MockMvc, AssertJ, Spring Boot TestContext (55 tests) |
 | **CI/CD** | GitHub Actions Pipeline |
 
 ---
@@ -109,14 +109,14 @@ A production-minded, secure, and containerized backend REST API for an enterpris
 ### 1. Clone Repository & Setup Environment
 
 ```bash
-git clone https://github.com/FathiMurad/ecommerce-api.git
+git clone [https://github.com/FathiMurad/ecommerce-api.git](https://github.com/FathiMurad/ecommerce-api.git)
 cd ecommerce-api
 
 # Copy example environment configuration
 cp .env.example .env
 ```
 
-Before starting with Docker Compose, populate `JWT_SECRET_KEY` and `SECURITY_PEPPER` in `.env` (for example using `openssl rand -base64 48`), as the default configuration fails fast when required secrets are unset.
+Before starting with Docker Compose, populate `JWT_SECRET_KEY` and `SECURITY_PEPPER` in `.env` (for example using `openssl rand -base64 48`), as the default configuration fails fast when required secrets are unset. Optionally set `ADMIN_EMAIL` / `ADMIN_PASSWORD` and `CUSTOMER_EMAIL` / `CUSTOMER_PASSWORD` to bootstrap initial accounts.
 
 ### 2. Run with Docker Compose (Recommended)
 
@@ -163,7 +163,7 @@ Run the Spring Boot application with the `local` profile enabled:
 
 ### Seeded Credentials
 
-> **Development only.** Override via `APP_INIT_ADMIN_EMAIL`, `APP_INIT_ADMIN_PASSWORD`, `APP_INIT_CUSTOMER_EMAIL`, and `APP_INIT_CUSTOMER_PASSWORD` environment variables before any deployment.
+> **Development only.** Initial accounts are created only when `ADMIN_EMAIL` / `ADMIN_PASSWORD` (and `CUSTOMER_EMAIL` / `CUSTOMER_PASSWORD`) are configured in the environment. The `local` Spring profile pre-populates the credentials below for local development:
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -216,7 +216,7 @@ The payment subsystem operates as an internal simulated gateway for development 
 
 ## Running the Automated Test Suite
 
-Execute the full suite of 51 automated integration and service tests (JUnit 5, MockMvc, AssertJ) against a live local PostgreSQL instance:
+Execute the full suite of 55 automated integration and service tests (JUnit 5, MockMvc, AssertJ) against a live local PostgreSQL instance:
 
 ```bash
 ./mvnw clean verify
