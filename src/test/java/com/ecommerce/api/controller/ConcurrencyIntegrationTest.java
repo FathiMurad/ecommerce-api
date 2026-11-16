@@ -134,4 +134,71 @@ class ConcurrencyIntegrationTest {
         Product finalProductState = productRepository.findById(productId).orElseThrow();
         assertThat(finalProductState.getStockQuantity()).as("Database stock level must be exactly 0 (no negative stock or overselling)").isZero();
     }
+
+    @Test
+    @DisplayName("Duplicate concurrent checkout on the exact same cart token creates at most one order")
+    void testConcurrentCheckoutSameCartCreatesSingleOrder() throws Exception {
+        Category category = categoryRepository.findById(1L).orElseGet(() -> categoryRepository.save(Category.builder().name("Electronics").description("Test").build()));
+
+        Product product = productRepository.saveAndFlush(Product.builder().name("Single Cart Race Test Item").description("Concurrency guard verification").price(new BigDecimal("50.00")).stockQuantity(10).category(category).images(Collections.emptyList()).build());
+
+        Long productId = product.getId();
+
+        AddToCartRequest addRequest = new AddToCartRequest(productId, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(request -> {
+            request.setRemoteAddr("192.168.150.1");
+            return request;
+        })).andExpect(status().isOk()).andReturn();
+
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        int threads = 2;
+        CountDownLatch readyLatch = new CountDownLatch(threads);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threads);
+
+        AtomicInteger createdCount = new AtomicInteger();
+        AtomicInteger clientErrorCount = new AtomicInteger();
+        AtomicInteger unexpectedCount = new AtomicInteger();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
+            for (int i = 0; i < threads; i++) {
+                final int index = i;
+                executor.submit(() -> {
+                    readyLatch.countDown();
+                    try {
+                        startLatch.await();
+
+                        CheckoutRequest checkoutRequest = new CheckoutRequest("Double Click Buyer", "doubleclick" + index + "@example.com", "Rothschild 1, Tel Aviv");
+                        MvcResult result = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest)).with(request -> {
+                            request.setRemoteAddr("192.168.150." + (10 + index));
+                            return request;
+                        })).andReturn();
+
+                        int status = result.getResponse().getStatus();
+                        if (status == 201) {
+                            createdCount.incrementAndGet();
+                        } else if (status >= 400 && status < 500) {
+                            clientErrorCount.incrementAndGet();
+                        } else {
+                            unexpectedCount.incrementAndGet();
+                        }
+                    } catch (Exception e) {
+                        unexpectedCount.incrementAndGet();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            startLatch.countDown();
+            assertThat(doneLatch.await(15, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(createdCount.get()).as("Exactly one checkout must succeed").isEqualTo(1);
+        assertThat(clientErrorCount.get()).as("Duplicate concurrent checkout must fail with 4xx").isEqualTo(1);
+        assertThat(unexpectedCount.get()).isZero();
+        assertThat(productRepository.findById(productId).orElseThrow().getStockQuantity()).isEqualTo(9);
+    }
 }
