@@ -1,6 +1,8 @@
 package com.ecommerce.api.controller;
 
 import com.ecommerce.api.dto.request.AddToCartRequest;
+import com.ecommerce.api.dto.request.UpdateCartItemRequest;
+import com.ecommerce.api.entity.Cart;
 import com.ecommerce.api.repository.CartRepository;
 import com.ecommerce.api.scheduler.GuestCartCleanupJob;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +24,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -93,5 +96,36 @@ class GuestCartLifecycleIntegrationTest {
         // 4. Verify expired cart was deleted and active cart remains
         assertThat(cartRepository.findByCartTokenWithItems(oldCartToken)).isEmpty();
         assertThat(cartRepository.findByCartTokenWithItems(recentCartToken)).isPresent();
+    }
+
+    @Test
+    @DisplayName("GuestCartCleanupJob preserves an older guest cart after recent cart item activity refreshes updatedAt")
+    void testCleanupPreservesOldGuestCartAfterRecentActivity() throws Exception {
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+
+        MvcResult cartResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        String cartToken = objectMapper.readTree(cartResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        LocalDateTime thirtyOneDaysAgo = LocalDateTime.now().minusDays(31);
+        entityManager.flush();
+        entityManager.createQuery("UPDATE Cart c SET c.updatedAt = :expiredAt WHERE c.cartToken = :token").setParameter("expiredAt", thirtyOneDaysAgo).setParameter("token", cartToken).executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
+
+        // Perform real cart activity (updating item quantity)
+        UpdateCartItemRequest updateRequest = new UpdateCartItemRequest(2);
+        mockMvc.perform(put("/api/cart/items/1").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(updateRequest))).andExpect(status().isOk());
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Cart refreshedCart = cartRepository.findByCartTokenWithItems(cartToken).orElseThrow();
+        assertThat(refreshedCart.getUpdatedAt()).isAfter(thirtyOneDaysAgo);
+
+        guestCartCleanupJob.cleanupAbandonedGuestCarts();
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(cartRepository.findByCartTokenWithItems(cartToken)).isPresent();
     }
 }

@@ -77,6 +77,17 @@ public class Cart {
         if (this.cartToken == null || this.cartToken.isBlank()) {
             this.cartToken = UUID.randomUUID().toString();
         }
+        if (this.updatedAt == null) {
+            this.updatedAt = LocalDateTime.now();
+        }
+    }
+
+    /**
+     * Explicitly updates the parent cart activity timestamp so modifying inverse mappedBy CartItem rows
+     * reliably refreshes updatedAt for GuestCartCleanupJob.
+     */
+    public void markActive() {
+        this.updatedAt = LocalDateTime.now();
     }
 
     public void addProduct(Product product, int quantity) {
@@ -91,6 +102,7 @@ public class Cart {
             CartItem newItem = CartItem.builder().cart(this).product(product).quantity(quantity).build();
             this.items.add(newItem);
         }
+        markActive();
     }
 
     public void removeProduct(Long productId) {
@@ -102,6 +114,7 @@ public class Cart {
         if (itemToRemove != null) {
             this.items.remove(itemToRemove);
             itemToRemove.setCart(null);
+            markActive();
         }
     }
 
@@ -125,6 +138,7 @@ public class Cart {
         }
 
         this.items.clear();
+        markActive();
     }
 
     private CartItem findItemByProductId(Long productId) {
