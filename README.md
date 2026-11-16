@@ -109,7 +109,7 @@ A production-minded, secure, and containerized backend REST API for an enterpris
 ### 1. Clone Repository & Setup Environment
 
 ```bash
-git clone [https://github.com/FathiMurad/ecommerce-api.git](https://github.com/FathiMurad/ecommerce-api.git)
+git clone https://github.com/FathiMurad/ecommerce-api.git
 cd ecommerce-api
 
 # Copy example environment configuration
