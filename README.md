@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/FathiMurad/ecommerce-api/actions/workflows/ci.yml/badge.svg)](https://github.com/FathiMurad/ecommerce-api/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker_Compose-Enabled-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A production-minded, secure, and containerized backend REST API for an enterprise supermarket e-commerce platform built with **Spring Boot 4.1.1**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
+A production-minded, secure, and containerized backend REST API for an enterprise supermarket e-commerce platform built with **Spring Boot 4.1.2**, **Java 21**, **Spring Security (Stateless JWT)**, **Hibernate / Spring Data JPA**, and **PostgreSQL**.
 
 ---
 
@@ -50,8 +50,8 @@ A production-minded, secure, and containerized backend REST API for an enterpris
 | Layer | Technology |
 | :--- | :--- |
 | **Language & Platform** | Java 21 (LTS) |
-| **Framework** | Spring Boot 4.1.1 (Web, Security, Data JPA, Validation, Cache, Actuator) |
-| **Security & Cryptography** | Spring Security (Boot 4.1.1), JJWT 0.12.6, BCrypt + Global HMAC-SHA256 Pepper |
+| **Framework** | Spring Boot 4.1.2 (Web, Security, Data JPA, Validation, Cache, Actuator) |
+| **Security & Cryptography** | Spring Security (Boot 4.1.2), JJWT 0.12.6, BCrypt + Global HMAC-SHA256 Pepper |
 | **Database & ORM** | PostgreSQL 16, Hibernate 7, HikariCP Connection Pool |
 | **Caching, Concurrency & Jobs** | Caffeine Cache, `ThreadPoolTaskExecutor`, Spring `@Scheduled`, Domain Events |
 | **Observability** | Micrometer, Prometheus Metrics Registry, Spring Boot Actuator |
