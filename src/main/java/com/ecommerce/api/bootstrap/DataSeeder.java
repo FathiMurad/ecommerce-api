@@ -25,6 +25,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Enterprise database seeder executing upon application startup.
+ * Idempotently initializes System Administrator & Default Customer credentials when configured,
+ * and optionally populates the supermarket catalog based on environment configuration.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -49,13 +54,20 @@ public class DataSeeder implements CommandLineRunner {
     @Value("${app.init.customer-password:${app.init.customer.password:}}")
     private String customerPassword;
 
+    @Value("${app.init.catalog.enabled:false}")
+    private boolean catalogSeedingEnabled;
+
     private static final String IMAGE_BASE_PATH = "/images/products/";
 
     @Override
     @Transactional
     public void run(String @NonNull ... args) {
         seedUsersAndCarts();
-        seedSupermarketCatalog();
+        if (catalogSeedingEnabled) {
+            seedSupermarketCatalog();
+        } else {
+            log.info("Catalog seeding is disabled by configuration (app.init.catalog.enabled=false).");
+        }
     }
 
     private void seedUsersAndCarts() {
@@ -89,9 +101,6 @@ public class DataSeeder implements CommandLineRunner {
         }
     }
 
-    /**
-     * Seeds the complete supermarket catalog across dynamic departments if empty.
-     */
     private void seedSupermarketCatalog() {
         if (categoryRepository.count() > 0) {
             log.info("Catalog categories already exist ({} found). Skipping catalog seeding.", categoryRepository.count());
@@ -194,9 +203,6 @@ public class DataSeeder implements CommandLineRunner {
         log.info("Catalog seeding complete: Saved {} products across {} departments.", catalog.size(), categories.size());
     }
 
-    /**
-     * Factory helper to construct a Product with an associated primary ProductImage.
-     */
     private Product createProduct(String name, String desc, String price, int stock, Category category, String imgFileName) {
         Product product = Product.builder().name(name).description(desc).price(new BigDecimal(price)).stockQuantity(stock).category(category).build();
 

@@ -87,7 +87,7 @@ public class SecurityConfig {
         List<String> origins = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
         configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Token", "Idempotency-Key"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cart-Token"));
         configuration.setExposedHeaders(List.of("X-Cart-Token", "Retry-After", "X-RateLimit-Remaining"));
         configuration.setAllowCredentials(false);
 

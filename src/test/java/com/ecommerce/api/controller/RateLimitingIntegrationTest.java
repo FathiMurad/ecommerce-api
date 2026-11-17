@@ -76,19 +76,42 @@ class RateLimitingIntegrationTest {
     }
 
     @Test
-    @DisplayName("Should lock out normalized email with HTTP 429 and Retry-After after 5 failed login attempts")
-    void testLoginLockoutByNormalizedEmailAfter5Failures() throws Exception {
+    @DisplayName("Should lock out normalized email and IP combination with HTTP 429 after 5 failed login attempts from same IP")
+    void testLoginLockoutByNormalizedEmailAndIpAfter5Failures() throws Exception {
         String targetEmail = "victim@example.com";
+        String clientIp = "198.51.100.50";
 
-        // 5 failed attempts from different IPs
+        // 5 failed attempts from the same IP
         for (int i = 0; i < 5; i++) {
             LoginRequest badRequest = LoginRequest.builder().email(targetEmail).password("WrongPass" + i).build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp("198.51.100." + (20 + i))).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            mockMvc.perform(post("/api/auth/login").with(remoteIp(clientIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
         }
 
-        // 6th attempt (even with different IP and mixed-case email) must return 429 + Retry-After
+        // 6th attempt from the same IP (even with mixed-case email) must return 429 + Retry-After
         LoginRequest lockedRequest = LoginRequest.builder().email("VICTIM@Example.COM").password("AnyPassword123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp("198.51.100.99")).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(lockedRequest))).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429));
+        mockMvc.perform(post("/api/auth/login").with(remoteIp(clientIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(lockedRequest))).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429));
+    }
+
+    @Test
+    @DisplayName("Failed login attempts from an attacker IP do not lock out user on a clean victim IP")
+    void testLoginLockoutIsIsolatedPerIp() throws Exception {
+        String targetEmail = "isolated@example.com";
+        String attackerIp = "203.0.113.50";
+        String victimIp = "198.51.100.80";
+
+        // 5 failed attempts from attacker IP
+        for (int i = 0; i < 5; i++) {
+            LoginRequest badRequest = LoginRequest.builder().email(targetEmail).password("WrongPass" + i).build();
+            mockMvc.perform(post("/api/auth/login").with(remoteIp(attackerIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+        }
+
+        // Attacker IP is now locked out (429) for that email
+        LoginRequest attackerRetry = LoginRequest.builder().email(targetEmail).password("AnyPassword123").build();
+        mockMvc.perform(post("/api/auth/login").with(remoteIp(attackerIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(attackerRetry))).andExpect(status().isTooManyRequests());
+
+        // Victim IP is NOT locked out (returns 401 Bad Credentials, not 429) preventing DoS
+        LoginRequest victimRequest = LoginRequest.builder().email(targetEmail).password("AnyPassword123").build();
+        mockMvc.perform(post("/api/auth/login").with(remoteIp(victimIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(victimRequest))).andExpect(status().isUnauthorized());
     }
 
     @Test

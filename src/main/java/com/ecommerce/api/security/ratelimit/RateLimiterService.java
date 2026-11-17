@@ -12,21 +12,21 @@ import java.time.Instant;
 
 /**
  * Service managing bounded Caffeine token-bucket instances per client IP and endpoint type,
- * as well as per-email failed login lockouts.
+ * as well as per-email/IP failed login lockouts to mitigate account enumeration/DoS.
  */
 @Slf4j
 @Service
 public class RateLimiterService {
 
-    private static final int MAX_LOGIN_FAILURES_PER_EMAIL = 5;
-    private static final Duration EMAIL_LOCKOUT_DURATION = Duration.ofMinutes(15);
+    private static final int MAX_LOGIN_FAILURES_PER_EMAIL_IP = 5;
+    private static final Duration EMAIL_IP_LOCKOUT_DURATION = Duration.ofMinutes(15);
 
     private record LoginFailureState(int failures, Instant lockedUntil) {
     }
 
     private final Cache<String, TokenBucket> buckets = Caffeine.newBuilder().expireAfterAccess(Duration.ofMinutes(10)).maximumSize(50_000).build();
 
-    private final Cache<String, LoginFailureState> loginFailuresByEmail = Caffeine.newBuilder().expireAfterWrite(EMAIL_LOCKOUT_DURATION).maximumSize(50_000).build();
+    private final Cache<String, LoginFailureState> loginFailuresByEmailIp = Caffeine.newBuilder().expireAfterWrite(EMAIL_IP_LOCKOUT_DURATION).maximumSize(50_000).build();
 
     @Value("${app.security.rate-limit.enabled:true}")
     private boolean enabled;
@@ -72,47 +72,49 @@ public class RateLimiterService {
         return RateLimitResult.denied(retryAfter);
     }
 
-    public void checkEmailLoginAllowed(String normalizedEmail) {
-        if (!enabled || normalizedEmail == null) {
+    public void checkEmailLoginAllowed(String normalizedEmail, String clientIp) {
+        if (!enabled || normalizedEmail == null || clientIp == null) {
             return;
         }
 
-        LoginFailureState state = loginFailuresByEmail.getIfPresent(normalizedEmail);
+        String stateKey = normalizedEmail + ":" + clientIp;
+        LoginFailureState state = loginFailuresByEmailIp.getIfPresent(stateKey);
         if (state != null && state.lockedUntil() != null) {
             long secondsRemaining = Duration.between(Instant.now(), state.lockedUntil()).getSeconds();
             if (secondsRemaining > 0) {
-                log.warn("Login blocked by email lockout policy. Retry-After: {}s", secondsRemaining);
+                log.warn("Login blocked by email/IP lockout policy for email={} from IP={}. Retry-After: {}s", normalizedEmail, clientIp, secondsRemaining);
                 throw new RateLimitExceededException("Rate limit exceeded due to repeated failed login attempts. Please retry after " + secondsRemaining + " seconds.", secondsRemaining);
             }
-            loginFailuresByEmail.invalidate(normalizedEmail);
+            loginFailuresByEmailIp.invalidate(stateKey);
         }
     }
 
-    public void recordFailedLogin(String normalizedEmail) {
-        if (!enabled || normalizedEmail == null) {
+    public void recordFailedLogin(String normalizedEmail, String clientIp) {
+        if (!enabled || normalizedEmail == null || clientIp == null) {
             return;
         }
 
-        loginFailuresByEmail.asMap().compute(normalizedEmail, (key, existing) -> {
+        String stateKey = normalizedEmail + ":" + clientIp;
+        loginFailuresByEmailIp.asMap().compute(stateKey, (key, existing) -> {
             Instant now = Instant.now();
             if (existing == null || (existing.lockedUntil() != null && !now.isBefore(existing.lockedUntil()))) {
                 return new LoginFailureState(1, null);
             }
             int count = existing.failures() + 1;
-            Instant lockUntil = count >= MAX_LOGIN_FAILURES_PER_EMAIL ? (existing.lockedUntil() != null ? existing.lockedUntil() : now.plus(EMAIL_LOCKOUT_DURATION)) : null;
+            Instant lockUntil = count >= MAX_LOGIN_FAILURES_PER_EMAIL_IP ? (existing.lockedUntil() != null ? existing.lockedUntil() : now.plus(EMAIL_IP_LOCKOUT_DURATION)) : null;
             return new LoginFailureState(count, lockUntil);
         });
     }
 
-    public void clearFailedLogins(String normalizedEmail) {
-        if (normalizedEmail != null) {
-            loginFailuresByEmail.invalidate(normalizedEmail);
+    public void clearFailedLogins(String normalizedEmail, String clientIp) {
+        if (normalizedEmail != null && clientIp != null) {
+            loginFailuresByEmailIp.invalidate(normalizedEmail + ":" + clientIp);
         }
     }
 
     public void clear() {
         buckets.invalidateAll();
-        loginFailuresByEmail.invalidateAll();
+        loginFailuresByEmailIp.invalidateAll();
     }
 
     private TokenBucket createBucket(RateLimitType type) {

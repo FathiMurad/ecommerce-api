@@ -12,6 +12,7 @@ import com.ecommerce.api.security.SecurityUser;
 import com.ecommerce.api.security.ratelimit.RateLimiterService;
 import com.ecommerce.api.service.AuthenticationService;
 import com.ecommerce.api.util.Emails;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -41,6 +42,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final RateLimiterService rateLimiterService;
+    private final HttpServletRequest httpServletRequest;
 
     @Override
     @Transactional
@@ -71,12 +73,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         Objects.requireNonNull(request, "Login request cannot be null.");
 
         String normalizedEmail = Emails.normalize(request.getEmail());
-        rateLimiterService.checkEmailLoginAllowed(normalizedEmail);
+        String clientIp = httpServletRequest.getRemoteAddr();
+
+        rateLimiterService.checkEmailLoginAllowed(normalizedEmail, clientIp);
 
         try {
             Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
 
-            rateLimiterService.clearFailedLogins(normalizedEmail);
+            rateLimiterService.clearFailedLogins(normalizedEmail, clientIp);
 
             if (!(authentication.getPrincipal() instanceof SecurityUser securityUser)) {
                 throw new IllegalStateException("Unexpected authentication principal.");
@@ -87,7 +91,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
             return issueToken(authenticatedUser);
         } catch (AuthenticationException ex) {
-            rateLimiterService.recordFailedLogin(normalizedEmail);
+            rateLimiterService.recordFailedLogin(normalizedEmail, clientIp);
             throw ex;
         }
     }
