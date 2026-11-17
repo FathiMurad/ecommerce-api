@@ -44,34 +44,99 @@ class ProductController {
 
     private final ProductService productService;
 
-    @Operation(summary = "Get all products (Paginated)", description = "Retrieves a paginated list of catalog products with sorting capabilities. Public access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved paginated products", content = @Content(schema = @Schema(implementation = PagedResponse.class)))})
+    @Operation(
+            summary = "Get all products (Paginated)",
+            description = "Retrieves a paginated list of catalog products with sorting capabilities. Public access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successfully retrieved paginated products",
+                    content = @Content(schema = @Schema(implementation = PagedResponse.class))
+            )
+    })
     @GetMapping
-    public ResponseEntity<PagedResponse<ProductResponse>> getAllProducts(@Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page (max 100)") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property: id, name, price, stockQuantity") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction: asc or desc") @RequestParam(defaultValue = "asc") String sortDirection) {
+    public ResponseEntity<PagedResponse<ProductResponse>> getAllProducts(
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Number of records per page (max 100)")
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sorting property: id, name, price, stockQuantity")
+            @RequestParam(defaultValue = "id") String sortBy,
+            @Parameter(description = "Sorting direction: asc or desc")
+            @RequestParam(defaultValue = "asc") String sortDirection
+    ) {
         Pageable pageable = toProductPageable(page, size, sortBy, sortDirection);
         PagedResponse<ProductResponse> products = productService.getAllProducts(pageable);
         return ResponseEntity.ok(products);
     }
 
-    @Operation(summary = "Get product by ID", description = "Retrieves a single product by its unique identifier including associated gallery images. Public access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Product found", content = @Content(schema = @Schema(implementation = ProductResponse.class))), @ApiResponse(responseCode = "404", description = "Product not found", content = @Content)})
+    @Operation(
+            summary = "Get product by ID",
+            description = "Retrieves a single product by its unique identifier including associated gallery images. Public access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Product found",
+                    content = @Content(schema = @Schema(implementation = ProductResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "Product not found", content = @Content)
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<ProductResponse> getProductById(@Parameter(description = "Product unique identifier", required = true) @PathVariable Long id) {
+    public ResponseEntity<ProductResponse> getProductById(
+            @Parameter(description = "Product unique identifier", required = true)
+            @PathVariable Long id
+    ) {
         ProductResponse product = productService.getProductById(id);
         return ResponseEntity.ok(product);
     }
 
-    @Operation(summary = "Get products by Category ID (Paginated)", description = "Retrieves a paginated list of products belonging to a specific category. Public access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved products for category", content = @Content(schema = @Schema(implementation = PagedResponse.class))), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)})
+    @Operation(
+            summary = "Get products by Category ID (Paginated)",
+            description = "Retrieves a paginated list of products belonging to a specific category. Public access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successfully retrieved products for category",
+                    content = @Content(schema = @Schema(implementation = PagedResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)
+    })
     @GetMapping("/category/{categoryId}")
-    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long categoryId, @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page, @Parameter(description = "Number of records per page (max 100)") @RequestParam(defaultValue = "10") int size, @Parameter(description = "Sorting property: id, name, price, stockQuantity") @RequestParam(defaultValue = "id") String sortBy, @Parameter(description = "Sorting direction: asc or desc") @RequestParam(defaultValue = "asc") String sortDirection) {
+    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByCategoryId(
+            @Parameter(description = "Category unique identifier", required = true)
+            @PathVariable Long categoryId,
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Number of records per page (max 100)")
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sorting property: id, name, price, stockQuantity")
+            @RequestParam(defaultValue = "id") String sortBy,
+            @Parameter(description = "Sorting direction: asc or desc")
+            @RequestParam(defaultValue = "asc") String sortDirection
+    ) {
         Pageable pageable = toProductPageable(page, size, sortBy, sortDirection);
         PagedResponse<ProductResponse> products = productService.getProductsByCategoryId(categoryId, pageable);
         return ResponseEntity.ok(products);
     }
 
-    @Operation(summary = "Create a new catalog product", description = "Creates a product with optional gallery image URLs. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Product created successfully", content = @Content(schema = @Schema(implementation = ProductResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid product payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Assigned category does not exist", content = @Content)})
+    @Operation(
+            summary = "Create a new catalog product",
+            description = "Creates a product with optional gallery image URLs. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Product created successfully",
+                    content = @Content(schema = @Schema(implementation = ProductResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid product payload", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Assigned category does not exist", content = @Content)
+    })
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ProductResponse> createProduct(@Valid @RequestBody ProductRequest request) {
@@ -79,20 +144,49 @@ class ProductController {
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
     }
 
-    @Operation(summary = "Update an existing product", description = "Updates product details and synchronizes gallery images. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Product updated successfully", content = @Content(schema = @Schema(implementation = ProductResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid product payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Product or category not found", content = @Content)})
+    @Operation(
+            summary = "Update an existing product",
+            description = "Updates product details and synchronizes gallery images. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Product updated successfully",
+                    content = @Content(schema = @Schema(implementation = ProductResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid product payload", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Product or category not found", content = @Content)
+    })
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ProductResponse> updateProduct(@Parameter(description = "Product unique identifier", required = true) @PathVariable Long id, @Valid @RequestBody ProductRequest request) {
+    public ResponseEntity<ProductResponse> updateProduct(
+            @Parameter(description = "Product unique identifier", required = true)
+            @PathVariable Long id,
+            @Valid @RequestBody ProductRequest request
+    ) {
         ProductResponse updatedProduct = productService.updateProduct(id, request);
         return ResponseEntity.ok(updatedProduct);
     }
 
-    @Operation(summary = "Delete a product", description = "Removes a product and its image associations from the catalog. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "204", description = "Product deleted successfully"), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Product not found", content = @Content), @ApiResponse(responseCode = "409", description = "Product is referenced in existing orders", content = @Content)})
+    @Operation(
+            summary = "Delete a product",
+            description = "Removes a product and its image associations from the catalog. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Product deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Product not found", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Product is referenced in existing orders", content = @Content)
+    })
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteProduct(@Parameter(description = "Product unique identifier", required = true) @PathVariable Long id) {
+    public ResponseEntity<Void> deleteProduct(
+            @Parameter(description = "Product unique identifier", required = true)
+            @PathVariable Long id
+    ) {
         productService.deleteProduct(id);
         return ResponseEntity.noContent().build();
     }

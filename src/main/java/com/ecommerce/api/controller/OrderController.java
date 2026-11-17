@@ -46,48 +46,130 @@ class OrderController {
 
     private final OrderService orderService;
 
-    @Operation(summary = "Execute order checkout", description = "Converts items in the active cart into a PENDING order awaiting payment, decrements stock atomically, and clears the cart.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Order placed successfully in PENDING status", content = @Content(schema = @Schema(implementation = OrderResponse.class))), @ApiResponse(responseCode = "400", description = "Cart is empty or invalid checkout payload", content = @Content), @ApiResponse(responseCode = "404", description = "Cart not found", content = @Content), @ApiResponse(responseCode = "409", description = "Insufficient stock", content = @Content), @ApiResponse(responseCode = "429", description = "Too many checkout requests - rate limit exceeded", content = @Content)})
+    @Operation(
+            summary = "Execute order checkout",
+            description = "Converts items in the active cart into a PENDING order awaiting payment, decrements stock atomically, and clears the cart."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Order placed successfully in PENDING status",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Cart is empty or invalid checkout payload", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Cart not found", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Insufficient stock", content = @Content),
+            @ApiResponse(responseCode = "429", description = "Too many checkout requests - rate limit exceeded", content = @Content)
+    })
     @PostMapping("/checkout")
-    public ResponseEntity<OrderResponse> checkout(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Anonymous cart session token (required for guest checkout)") @RequestHeader(value = "X-Cart-Token", required = false) String cartToken, @Valid @RequestBody CheckoutRequest request) {
+    public ResponseEntity<OrderResponse> checkout(
+            @AuthenticationPrincipal SecurityUser securityUser,
+            @Parameter(description = "Anonymous cart session token (required for guest checkout)")
+            @RequestHeader(value = "X-Cart-Token", required = false) String cartToken,
+            @Valid @RequestBody CheckoutRequest request
+    ) {
         User user = ControllerUtils.extractUser(securityUser);
         OrderResponse order = orderService.checkout(user, cartToken, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(order);
     }
 
-    @Operation(summary = "Get current user order history (Paginated)", description = "Retrieves paginated order history for the currently authenticated user. Requires authentication.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved order history", content = @Content(schema = @Schema(implementation = PagedResponse.class))), @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content)})
+    @Operation(
+            summary = "Get current user order history (Paginated)",
+            description = "Retrieves paginated order history for the currently authenticated user. Requires authentication.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successfully retrieved order history",
+                    content = @Content(schema = @Schema(implementation = PagedResponse.class))
+            ),
+            @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content)
+    })
     @GetMapping("/my-orders")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<PagedResponse<OrderResponse>> getMyOrders(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Pagination parameters (page, size, sort)") @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+    public ResponseEntity<PagedResponse<OrderResponse>> getMyOrders(
+            @AuthenticationPrincipal SecurityUser securityUser,
+            @Parameter(description = "Pagination parameters (page, size, sort)")
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+    ) {
         User user = ControllerUtils.extractUser(securityUser);
         PagedResponse<OrderResponse> orders = orderService.getMyOrders(user, pageable);
         return ResponseEntity.ok(orders);
     }
 
-    @Operation(summary = "Update order status", description = "Administratively updates the lifecycle status of an order according to the state machine rules. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Order status updated successfully", content = @Content(schema = @Schema(implementation = OrderResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid status value", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Order not found", content = @Content), @ApiResponse(responseCode = "409", description = "Illegal status transition or terminal order state", content = @Content)})
+    @Operation(
+            summary = "Update order status",
+            description = "Administratively updates the lifecycle status of an order according to the state machine rules. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Order status updated successfully",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid status value", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Order not found", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Illegal status transition or terminal order state", content = @Content)
+    })
     @PatchMapping("/{trackingNumber}/status")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<OrderResponse> updateOrderStatus(@Parameter(description = "Order tracking number", required = true) @PathVariable String trackingNumber, @Valid @RequestBody UpdateOrderStatusRequest request) {
+    public ResponseEntity<OrderResponse> updateOrderStatus(
+            @Parameter(description = "Order tracking number", required = true)
+            @PathVariable String trackingNumber,
+            @Valid @RequestBody UpdateOrderStatusRequest request
+    ) {
         OrderResponse updatedOrder = orderService.updateOrderStatus(trackingNumber, request.getStatus());
         return ResponseEntity.ok(updatedOrder);
     }
 
-    @Operation(summary = "Get order by tracking number", description = "Retrieves order details by its unique tracking number. Subject to ownership or admin access control.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Order retrieved successfully", content = @Content(schema = @Schema(implementation = OrderResponse.class))), @ApiResponse(responseCode = "404", description = "Order not found", content = @Content)})
+    @Operation(
+            summary = "Get order by tracking number",
+            description = "Retrieves order details by its unique tracking number. Subject to ownership or admin access control."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Order retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "Order not found", content = @Content)
+    })
     @GetMapping("/{trackingNumber}")
-    public ResponseEntity<OrderResponse> getOrderByTrackingNumber(@AuthenticationPrincipal SecurityUser securityUser, @Parameter(description = "Order tracking number", required = true) @PathVariable String trackingNumber) {
+    public ResponseEntity<OrderResponse> getOrderByTrackingNumber(
+            @AuthenticationPrincipal SecurityUser securityUser,
+            @Parameter(description = "Order tracking number", required = true)
+            @PathVariable String trackingNumber
+    ) {
         User viewer = ControllerUtils.extractUser(securityUser);
         OrderResponse order = orderService.getOrderByTrackingNumber(trackingNumber, viewer);
         return ResponseEntity.ok(order);
     }
 
-    @Operation(summary = "Get orders by customer email (Paginated)", description = "Retrieves order history filtered by customer email. Restricted to ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved orders for email", content = @Content(schema = @Schema(implementation = PagedResponse.class))), @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content)})
+    @Operation(
+            summary = "Get orders by customer email (Paginated)",
+            description = "Retrieves order history filtered by customer email. Restricted to ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successfully retrieved orders for email",
+                    content = @Content(schema = @Schema(implementation = PagedResponse.class))
+            ),
+            @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content)
+    })
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<PagedResponse<OrderResponse>> getOrdersByCustomerEmail(@Parameter(description = "Target customer email address", required = true) @RequestParam String customerEmail, @Parameter(description = "Pagination parameters") @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+    public ResponseEntity<PagedResponse<OrderResponse>> getOrdersByCustomerEmail(
+            @Parameter(description = "Target customer email address", required = true)
+            @RequestParam String customerEmail,
+            @Parameter(description = "Pagination parameters")
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+    ) {
         PagedResponse<OrderResponse> orders = orderService.getOrdersByCustomerEmail(customerEmail, pageable);
         return ResponseEntity.ok(orders);
     }

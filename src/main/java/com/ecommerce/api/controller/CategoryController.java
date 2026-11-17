@@ -40,24 +40,59 @@ class CategoryController {
 
     private final CategoryService categoryService;
 
-    @Operation(summary = "Get all categories", description = "Retrieves all available catalog departments/categories. Public access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Successfully retrieved categories", content = @Content(array = @ArraySchema(schema = @Schema(implementation = CategoryResponse.class))))})
+    @Operation(
+            summary = "Get all categories",
+            description = "Retrieves all available catalog departments/categories. Public access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successfully retrieved categories",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = CategoryResponse.class)))
+            )
+    })
     @GetMapping
     public ResponseEntity<List<CategoryResponse>> getAllCategories() {
         List<CategoryResponse> categories = categoryService.getAllCategories();
         return ResponseEntity.ok(categories);
     }
 
-    @Operation(summary = "Get category by ID", description = "Retrieves a single category by its unique identifier. Public access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Category found", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)})
+    @Operation(
+            summary = "Get category by ID",
+            description = "Retrieves a single category by its unique identifier. Public access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Category found",
+                    content = @Content(schema = @Schema(implementation = CategoryResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "Category not found", content = @Content)
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<CategoryResponse> getCategoryById(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long id) {
+    public ResponseEntity<CategoryResponse> getCategoryById(
+            @Parameter(description = "Category unique identifier", required = true)
+            @PathVariable Long id
+    ) {
         CategoryResponse category = categoryService.getCategoryById(id);
         return ResponseEntity.ok(category);
     }
 
-    @Operation(summary = "Create a new category", description = "Creates a new catalog category. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Category created successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "409", description = "Category name already exists", content = @Content)})
+    @Operation(
+            summary = "Create a new category",
+            description = "Creates a new catalog category. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Category created successfully",
+                    content = @Content(schema = @Schema(implementation = CategoryResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Category name already exists", content = @Content)
+    })
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CategoryResponse> createCategory(@Valid @RequestBody CategoryRequest request) {
@@ -65,20 +100,50 @@ class CategoryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(createdCategory);
     }
 
-    @Operation(summary = "Update an existing category", description = "Updates the name and description of a category. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "Category updated successfully", content = @Content(schema = @Schema(implementation = CategoryResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content), @ApiResponse(responseCode = "409", description = "Target category name already in use by another category", content = @Content)})
+    @Operation(
+            summary = "Update an existing category",
+            description = "Updates the name and description of a category. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Category updated successfully",
+                    content = @Content(schema = @Schema(implementation = CategoryResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid category payload", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Category not found", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Target category name already in use by another category", content = @Content)
+    })
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<CategoryResponse> updateCategory(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long id, @Valid @RequestBody CategoryRequest request) {
+    public ResponseEntity<CategoryResponse> updateCategory(
+            @Parameter(description = "Category unique identifier", required = true)
+            @PathVariable Long id,
+            @Valid @RequestBody CategoryRequest request
+    ) {
         CategoryResponse updatedCategory = categoryService.updateCategory(id, request);
         return ResponseEntity.ok(updatedCategory);
     }
 
-    @Operation(summary = "Delete a category", description = "Deletes an empty category. Requires ROLE_ADMIN.", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses(value = {@ApiResponse(responseCode = "204", description = "Category deleted successfully"), @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content), @ApiResponse(responseCode = "404", description = "Category not found", content = @Content), @ApiResponse(responseCode = "409", description = "Cannot delete category with associated products", content = @Content)})
+    @Operation(
+            summary = "Delete a category",
+            description = "Deletes an empty category. Requires ROLE_ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Category deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied - Administrator role required", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Category not found", content = @Content),
+            @ApiResponse(responseCode = "409", description = "Cannot delete category with associated products", content = @Content)
+    })
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteCategory(@Parameter(description = "Category unique identifier", required = true) @PathVariable Long id) {
+    public ResponseEntity<Void> deleteCategory(
+            @Parameter(description = "Category unique identifier", required = true)
+            @PathVariable Long id
+    ) {
         categoryService.deleteCategory(id);
         return ResponseEntity.noContent().build();
     }

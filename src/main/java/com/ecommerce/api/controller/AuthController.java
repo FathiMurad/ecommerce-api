@@ -30,16 +30,40 @@ class AuthController {
 
     private final AuthenticationService authenticationService;
 
-    @Operation(summary = "Register a new customer", description = "Creates a new customer account and returns a signed JWT token.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "201", description = "Customer successfully registered and authenticated", content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid input data or malformed request payload", content = @Content), @ApiResponse(responseCode = "409", description = "An account with the provided email already exists", content = @Content), @ApiResponse(responseCode = "429", description = "Too many authentication requests - rate limit exceeded", content = @Content)})
+    @Operation(
+            summary = "Register a new customer",
+            description = "Creates a new customer account and returns a signed JWT token."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Customer successfully registered and authenticated",
+                    content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid input data or malformed request payload", content = @Content),
+            @ApiResponse(responseCode = "409", description = "An account with the provided email already exists", content = @Content),
+            @ApiResponse(responseCode = "429", description = "Too many authentication requests - rate limit exceeded", content = @Content)
+    })
     @PostMapping("/register")
     public ResponseEntity<AuthenticationResponse> register(@Valid @RequestBody RegisterRequest request) {
         AuthenticationResponse response = authenticationService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "Authenticate user credentials", description = "Validates user credentials and issues a signed JWT token for authorized API access.")
-    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "User successfully authenticated", content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))), @ApiResponse(responseCode = "400", description = "Invalid input data or malformed request payload", content = @Content), @ApiResponse(responseCode = "401", description = "Invalid credentials or inactive account", content = @Content), @ApiResponse(responseCode = "429", description = "Too many authentication requests - rate limit exceeded", content = @Content)})
+    @Operation(
+            summary = "Authenticate user credentials",
+            description = "Validates user credentials and issues a signed JWT token for authorized API access."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "User successfully authenticated",
+                    content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "Invalid input data or malformed request payload", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Invalid credentials or inactive account", content = @Content),
+            @ApiResponse(responseCode = "429", description = "Too many authentication requests - rate limit exceeded", content = @Content)
+    })
     @PostMapping("/login")
     public ResponseEntity<AuthenticationResponse> authenticate(@Valid @RequestBody LoginRequest request) {
         AuthenticationResponse response = authenticationService.authenticate(request);
