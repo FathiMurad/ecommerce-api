@@ -57,7 +57,7 @@ class ValidationIntegrationTest {
     @Test
     @DisplayName("Should reject invalid register request with 400 and field-level validation errors")
     void testRegisterValidationFailure() throws Exception {
-        RegisterRequest invalidRegister = RegisterRequest.builder().firstName("").lastName("").email("invalid-email-address").password("123") // Less than 6 characters
+        RegisterRequest invalidRegister = RegisterRequest.builder().firstName("").lastName("").email("invalid-email-address").password("Pass123") // 7 chars (< 8 minimum)
                 .build();
 
         mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(invalidRegister))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.validationErrors.firstName").isNotEmpty()).andExpect(jsonPath("$.validationErrors.lastName").isNotEmpty()).andExpect(jsonPath("$.validationErrors.email").isNotEmpty()).andExpect(jsonPath("$.validationErrors.password").isNotEmpty());

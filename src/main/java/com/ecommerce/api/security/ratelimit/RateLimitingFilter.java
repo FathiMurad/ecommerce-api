@@ -68,7 +68,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             return RateLimitType.PAYMENT;
         }
 
-        if ((path.equals("/api/cart/items") && "POST".equalsIgnoreCase(method)) || (path.equals("/api/cart") && "GET".equalsIgnoreCase(method))) {
+        if (path.equals("/api/cart") || path.startsWith("/api/cart/")) {
             return RateLimitType.CART;
         }
 

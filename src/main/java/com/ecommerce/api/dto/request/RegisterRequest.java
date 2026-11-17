@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class RegisterRequest {
 
-    public static final int RAW_PASSWORD_MIN_LENGTH = 6;
+    public static final int RAW_PASSWORD_MIN_LENGTH = 8;
 
     /**
      * Maximum character length for raw user passwords.
