@@ -39,10 +39,7 @@ public class CartServiceImpl implements CartService {
             Cart cart = cartResolver.findForUser(user, cartToken).orElseGet(() -> cartResolver.createCart(user));
             return CartResponse.fromEntity(cart);
         }
-        return cartResolver.findGuest(cartToken).map(cart -> {
-            cart.markActive();
-            return CartResponse.fromEntity(cart);
-        }).orElseGet(CartResponse::empty);
+        return cartResolver.findGuest(cartToken).map(CartResponse::fromEntity).orElseGet(CartResponse::empty);
     }
 
     @Override

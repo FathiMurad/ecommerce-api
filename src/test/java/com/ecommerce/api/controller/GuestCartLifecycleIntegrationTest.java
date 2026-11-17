@@ -15,9 +15,15 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
@@ -127,5 +133,50 @@ class GuestCartLifecycleIntegrationTest {
         entityManager.clear();
 
         assertThat(cartRepository.findByCartTokenWithItems(cartToken)).isPresent();
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("Concurrent GET /api/cart requests with the same X-Cart-Token both succeed with 200 OK without version conflicts")
+    void testConcurrentGetGuestCartDoesNotCauseVersionConflict() throws Exception {
+        AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(req -> {
+            req.setRemoteAddr("192.168.180.1");
+            return req;
+        })).andExpect(status().isOk()).andReturn();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+
+        int threads = 2;
+        CountDownLatch readyLatch = new CountDownLatch(threads);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threads);
+        AtomicInteger okCount = new AtomicInteger();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
+            for (int i = 0; i < threads; i++) {
+                final int idx = i;
+                executor.submit(() -> {
+                    readyLatch.countDown();
+                    try {
+                        startLatch.await();
+                        int status = mockMvc.perform(get("/api/cart").header("X-Cart-Token", cartToken).with(req -> {
+                            req.setRemoteAddr("192.168.180." + (10 + idx));
+                            return req;
+                        })).andReturn().getResponse().getStatus();
+                        if (status == 200) {
+                            okCount.incrementAndGet();
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            startLatch.countDown();
+            assertThat(doneLatch.await(10, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(okCount.get()).isEqualTo(2);
     }
 }

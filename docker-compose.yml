@@ -15,7 +15,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
     networks:
       - ecommerce-network
 
@@ -39,6 +40,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       CUSTOMER_EMAIL: ${CUSTOMER_EMAIL:-}
       CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:-}
+      CATALOG_SEEDING_ENABLED: ${CATALOG_SEEDING_ENABLED:-true}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     healthcheck:
