@@ -7,6 +7,8 @@ import com.ecommerce.api.dto.response.PagedResponse;
 import com.ecommerce.api.entity.User;
 import com.ecommerce.api.security.SecurityUser;
 import com.ecommerce.api.service.OrderService;
+import com.ecommerce.api.util.PageRequests;
+import com.ecommerce.api.util.SortFields;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -18,8 +20,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,6 +43,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @Tag(name = "Orders", description = "Endpoints for order placement, tracking, lifecycle transitions, and order history")
 class OrderController {
+
+    private static final String DEFAULT_SORT_FIELD = "createdAt";
 
     private final OrderService orderService;
 
@@ -90,10 +92,17 @@ class OrderController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<PagedResponse<OrderResponse>> getMyOrders(
             @AuthenticationPrincipal SecurityUser securityUser,
-            @Parameter(description = "Pagination parameters (page, size, sort)")
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Number of records per page (max 100)")
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sorting property: id, createdAt, totalAmount, status")
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sorting direction: asc or desc")
+            @RequestParam(defaultValue = "desc") String sortDirection
     ) {
         User user = ControllerUtils.extractUser(securityUser);
+        Pageable pageable = toOrderPageable(page, size, sortBy, sortDirection);
         PagedResponse<OrderResponse> orders = orderService.getMyOrders(user, pageable);
         return ResponseEntity.ok(orders);
     }
@@ -167,10 +176,21 @@ class OrderController {
     public ResponseEntity<PagedResponse<OrderResponse>> getOrdersByCustomerEmail(
             @Parameter(description = "Target customer email address", required = true)
             @RequestParam String customerEmail,
-            @Parameter(description = "Pagination parameters")
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Number of records per page (max 100)")
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sorting property: id, createdAt, totalAmount, status")
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sorting direction: asc or desc")
+            @RequestParam(defaultValue = "desc") String sortDirection
     ) {
+        Pageable pageable = toOrderPageable(page, size, sortBy, sortDirection);
         PagedResponse<OrderResponse> orders = orderService.getOrdersByCustomerEmail(customerEmail, pageable);
         return ResponseEntity.ok(orders);
+    }
+
+    private Pageable toOrderPageable(int page, int size, String sortBy, String sortDirection) {
+        return PageRequests.from(page, size, sortBy, sortDirection, SortFields.ORDER_SORT_FIELDS, DEFAULT_SORT_FIELD);
     }
 }
