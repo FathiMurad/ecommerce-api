@@ -12,7 +12,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * Thread pool, scheduling, and asynchronous task execution configuration for system events.
+ * Configures asynchronous task execution, scheduled jobs, and uncaught async exception handling.
  */
 @Slf4j
 @Configuration
@@ -43,6 +43,11 @@ public class AsyncConfig implements AsyncConfigurer {
 
     @Override
     public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
-        return (throwable, method, params) -> log.error("Unhandled exception caught in asynchronous method '{}': {}", method.getName(), throwable.getMessage(), throwable);
+        return (throwable, method, params) -> log.error(
+                "Unhandled exception caught in asynchronous method '{}': {}",
+                method.getName(),
+                throwable.getMessage(),
+                throwable
+        );
     }
 }

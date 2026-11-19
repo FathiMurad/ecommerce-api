@@ -14,8 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import java.util.List;
 
 /**
- * Configuration bean initializing OpenAPI 3.1 specification metadata
- * and registering the Bearer JWT security scheme for protected and optional-auth endpoints.
+ * Configures OpenAPI metadata and JWT security requirements for protected and guest-accessible endpoints.
  */
 @Configuration
 public class OpenApiConfig {
@@ -24,16 +23,32 @@ public class OpenApiConfig {
 
     @Bean
     public OpenAPI customOpenAPI() {
-        return new OpenAPI().info(new Info().title("E-Commerce REST API").version("1.0.0").description("Production-minded e-commerce backend API covering Catalog, Shopping Cart, Order Checkout, and Simulated Payment modules.").contact(new Contact().name("Fathi Murad").email("fathi@example.com")).license(new License().name("MIT License").url("https://opensource.org/licenses/MIT"))).components(new Components().addSecuritySchemes(SECURITY_SCHEME_NAME, new SecurityScheme().name(SECURITY_SCHEME_NAME).type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")));
+        return new OpenAPI()
+                .info(new Info()
+                        .title("E-Commerce REST API")
+                        .version("1.0.0")
+                        .description("Production-minded e-commerce backend API covering Catalog, Shopping Cart, Order Checkout, and Simulated Payment modules.")
+                        .contact(new Contact().name("Fathi Murad").email("fathi@example.com"))
+                        .license(new License().name("MIT License").url("https://opensource.org/licenses/MIT")))
+                .components(new Components()
+                        .addSecuritySchemes(SECURITY_SCHEME_NAME, new SecurityScheme()
+                                .name(SECURITY_SCHEME_NAME)
+                                .type(SecurityScheme.Type.HTTP)
+                                .scheme("bearer")
+                                .bearerFormat("JWT")));
     }
 
-    /**
-     * Marks endpoints that accept both anonymous guests (via X-Cart-Token or trackingNumber)
-     * and authenticated JWT users with optional bearerAuth: [{"bearerAuth": []}, {}].
-     */
     @Bean
     public OpenApiCustomizer optionalAuthCustomizer() {
-        List<String> optionalAuthPaths = List.of("/api/cart", "/api/cart/items", "/api/cart/items/{productId}", "/api/orders/checkout", "/api/orders/{trackingNumber}", "/api/payments/orders/{trackingNumber}");
+        // Endpoints supporting both guest tokens and authenticated JWTs require an empty fallback SecurityRequirement
+        List<String> optionalAuthPaths = List.of(
+                "/api/cart",
+                "/api/cart/items",
+                "/api/cart/items/{productId}",
+                "/api/orders/checkout",
+                "/api/orders/{trackingNumber}",
+                "/api/payments/orders/{trackingNumber}"
+        );
 
         return openApi -> {
             if (openApi.getPaths() == null) {
@@ -41,7 +56,9 @@ public class OpenApiConfig {
             }
             openApi.getPaths().forEach((path, pathItem) -> {
                 if (optionalAuthPaths.contains(path)) {
-                    pathItem.readOperations().forEach(operation -> operation.setSecurity(List.of(new SecurityRequirement().addList(SECURITY_SCHEME_NAME), new SecurityRequirement())));
+                    pathItem.readOperations().forEach(operation -> operation.setSecurity(
+                            List.of(new SecurityRequirement().addList(SECURITY_SCHEME_NAME), new SecurityRequirement())
+                    ));
                 }
             });
         };

@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * Cache configuration backed by Caffeine with bounded size and short time-based expiration.
+ * Configures in-memory Caffeine caching with bounded capacity and time-based expiration.
  */
 @Configuration
 @EnableCaching
@@ -19,7 +19,9 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager cacheManager = new CaffeineCacheManager();
-        cacheManager.setCaffeine(Caffeine.newBuilder().maximumSize(500).expireAfterWrite(Duration.ofMinutes(2)));
+        cacheManager.setCaffeine(Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(Duration.ofMinutes(2)));
         return cacheManager;
     }
 }
