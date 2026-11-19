@@ -6,10 +6,13 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 /**
- * Represents the settlement and authorization states of a transaction processing attempt.
+ * Defines settlement and authorization states of a payment transaction attempt.
  */
 public enum PaymentStatus {
-    PENDING, COMPLETED, FAILED, REFUNDED;
+    PENDING,
+    COMPLETED,
+    FAILED,
+    REFUNDED;
 
     @JsonValue
     public String toValue() {
@@ -30,6 +33,8 @@ public enum PaymentStatus {
             }
         }
 
-        throw new IllegalArgumentException("Unknown payment status: '" + value + "'. Supported statuses: " + Arrays.toString(values()));
+        throw new IllegalArgumentException(
+                "Unknown payment status: '" + value + "'. Supported statuses: " + Arrays.toString(values())
+        );
     }
 }

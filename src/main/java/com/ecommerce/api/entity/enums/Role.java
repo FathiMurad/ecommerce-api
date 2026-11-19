@@ -6,10 +6,11 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 /**
- * Defines system authority boundaries and role-based access control (RBAC) levels for users.
+ * Defines role-based access control (RBAC) authority levels for system users.
  */
 public enum Role {
-    ROLE_CUSTOMER, ROLE_ADMIN;
+    ROLE_CUSTOMER,
+    ROLE_ADMIN;
 
     @JsonValue
     public String toValue() {
@@ -30,6 +31,8 @@ public enum Role {
             }
         }
 
-        throw new IllegalArgumentException("Unknown role: '" + value + "'. Supported roles: " + Arrays.toString(values()));
+        throw new IllegalArgumentException(
+                "Unknown role: '" + value + "'. Supported roles: " + Arrays.toString(values())
+        );
     }
 }

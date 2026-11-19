@@ -6,10 +6,13 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 /**
- * Supported payment channels and mechanisms for settling customer order transactions.
+ * Defines supported payment channels for settling customer order transactions.
  */
 public enum PaymentMethod {
-    CREDIT_CARD, DEBIT_CARD, PAYPAL, CASH_ON_DELIVERY;
+    CREDIT_CARD,
+    DEBIT_CARD,
+    PAYPAL,
+    CASH_ON_DELIVERY;
 
     @JsonValue
     public String toValue() {
@@ -30,6 +33,8 @@ public enum PaymentMethod {
             }
         }
 
-        throw new IllegalArgumentException("Unknown payment method: '" + value + "'. Supported methods: " + Arrays.toString(values()));
+        throw new IllegalArgumentException(
+                "Unknown payment method: '" + value + "'. Supported methods: " + Arrays.toString(values())
+        );
     }
 }
