@@ -26,15 +26,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Enterprise database seeder executing upon application startup.
- * Idempotently initializes System Administrator & Default Customer credentials when configured,
- * and optionally populates the supermarket catalog based on environment configuration.
+ * Idempotently seeds initial admin/customer accounts and the sample product catalog on application startup.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 @SuppressWarnings("SpellCheckingInspection")
 public class DataSeeder implements CommandLineRunner {
+
+    private static final String IMAGE_BASE_PATH = "/images/products/";
 
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
@@ -57,8 +57,6 @@ public class DataSeeder implements CommandLineRunner {
     @Value("${app.init.catalog.enabled:false}")
     private boolean catalogSeedingEnabled;
 
-    private static final String IMAGE_BASE_PATH = "/images/products/";
-
     @Override
     @Transactional
     public void run(String @NonNull ... args) {
@@ -76,7 +74,14 @@ public class DataSeeder implements CommandLineRunner {
         } else {
             String normalizedAdminEmail = adminEmail.trim().toLowerCase();
             if (!userRepository.existsByEmail(normalizedAdminEmail)) {
-                User admin = User.builder().firstName("Super").lastName("Admin").email(normalizedAdminEmail).password(passwordEncoder.encode(adminPassword)).role(Role.ROLE_ADMIN).isActive(true).build();
+                User admin = User.builder()
+                        .firstName("Super")
+                        .lastName("Admin")
+                        .email(normalizedAdminEmail)
+                        .password(passwordEncoder.encode(adminPassword))
+                        .role(Role.ROLE_ADMIN)
+                        .isActive(true)
+                        .build();
                 userRepository.save(admin);
                 log.info("Default Admin initialized with email={}", normalizedAdminEmail);
             } else {
@@ -89,10 +94,20 @@ public class DataSeeder implements CommandLineRunner {
         } else {
             String normalizedCustomerEmail = customerEmail.trim().toLowerCase();
             if (!userRepository.existsByEmail(normalizedCustomerEmail)) {
-                User customer = User.builder().firstName("Default").lastName("Customer").email(normalizedCustomerEmail).password(passwordEncoder.encode(customerPassword)).role(Role.ROLE_CUSTOMER).isActive(true).build();
+                User customer = User.builder()
+                        .firstName("Default")
+                        .lastName("Customer")
+                        .email(normalizedCustomerEmail)
+                        .password(passwordEncoder.encode(customerPassword))
+                        .role(Role.ROLE_CUSTOMER)
+                        .isActive(true)
+                        .build();
                 User savedCustomer = userRepository.save(customer);
 
-                Cart customerCart = Cart.builder().user(savedCustomer).cartToken(UUID.randomUUID().toString()).build();
+                Cart customerCart = Cart.builder()
+                        .user(savedCustomer)
+                        .cartToken(UUID.randomUUID().toString())
+                        .build();
                 cartRepository.save(customerCart);
                 log.info("Default Customer and initial cart initialized with email={}", normalizedCustomerEmail);
             } else {
@@ -122,7 +137,7 @@ public class DataSeeder implements CommandLineRunner {
 
         List<Product> catalog = new ArrayList<>();
 
-        // 1. Dairy & Eggs
+        // Dairy & Eggs
         catalog.add(createProduct("Fresh Milk 3%", "Locally sourced fresh cow's milk with 3% fat content, 1L carton.", "6.50", 120, dairy, "milk.png"));
         catalog.add(createProduct("Cheddar Cheese", "Aged cheddar cheese block with a sharp, rich flavor, 200g.", "18.90", 45, dairy, "cheddar.png"));
         catalog.add(createProduct("Organic Eggs", "Pack of 12 free-range organic eggs from local farms.", "24.00", 60, dairy, "eggs.png"));
@@ -134,7 +149,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Gouda Slices", "Premium Dutch Gouda cheese, sliced and ready to serve, 150g.", "16.90", 40, dairy, "gouda.png"));
         catalog.add(createProduct("Sour Cream 15%", "Traditional sour cream, perfect for cooking and toppings, 200g.", "4.20", 90, dairy, "sour-cream.png"));
 
-        // 2. Fruits & Vegetables
+        // Fruits & Vegetables
         catalog.add(createProduct("Green Apples", "Crisp and tart Granny Smith apples, 1 kg.", "12.90", 200, produce, "green-apples.png"));
         catalog.add(createProduct("Cherry Tomatoes", "Sweet organic cherry tomatoes, perfect for salads, 500g box.", "14.00", 150, produce, "cherry-tomatoes.png"));
         catalog.add(createProduct("Fresh Bananas", "Sweet ripe yellow bananas, imported, 1 kg.", "8.50", 250, produce, "bananas.png"));
@@ -149,7 +164,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Fresh Lemons", "Juicy yellow sour lemons, great for cooking and drinks, 1 kg.", "9.20", 130, produce, "lemons.png"));
         catalog.add(createProduct("Garlic Pearls", "Mesh pack of white garlic, 3 whole heads.", "5.00", 160, produce, "garlic.png"));
 
-        // 3. Meat & Poultry
+        // Meat & Poultry
         catalog.add(createProduct("Chicken Breast", "Fresh boneless, skinless chicken breast fillets, 1 kg.", "35.00", 40, meat, "chicken-breast.png"));
         catalog.add(createProduct("Minced Beef", "Premium fresh lean ground beef, 500g.", "42.00", 35, meat, "minced-beef.png"));
         catalog.add(createProduct("Ribeye Steak", "Fresh premium aged ribeye beef steak with rich marbling, 1 kg.", "125.00", 15, meat, "ribeye-steak.png"));
@@ -158,7 +173,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Fresh Turkey Breast", "Sliced deli-ready fresh turkey breast, 1 kg.", "48.00", 20, meat, "turkey-breast.png"));
         catalog.add(createProduct("Premium Lamb Chops", "Fresh local lamb chops, tender cut, 1 kg.", "140.00", 12, meat, "lamb-chops.png"));
 
-        // 4. Bakery
+        // Bakery
         catalog.add(createProduct("Whole Wheat Bread", "Freshly baked high-fiber sliced wheat bread.", "13.90", 65, bakery, "wheat-bread.png"));
         catalog.add(createProduct("Butter Croissant", "Flaky French-style butter croissant, baked fresh daily.", "4.50", 120, bakery, "croissant.png"));
         catalog.add(createProduct("Chocolate Muffin", "Rich double chocolate chunk bakery muffin.", "6.90", 55, bakery, "chocolate-muffin.png"));
@@ -168,7 +183,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Hamburger Buns", "Pack of 6 soft white sesame hamburger buns.", "11.00", 100, bakery, "hamburger-buns.png"));
         catalog.add(createProduct("Apple Pie Tart", "Sweet baked apple cinnamon tart with a golden lattice crust.", "26.00", 30, bakery, "apple-tart.png"));
 
-        // 5. Beverages
+        // Beverages
         catalog.add(createProduct("Mineral Water Pack", "Pack of six bottles of pure natural mineral water, 1.5L each.", "11.50", 300, beverages, "mineral-water.png"));
         catalog.add(createProduct("Pure Orange Juice", "100% natural pasteurized orange juice, no added sugar, 1L.", "14.90", 95, beverages, "orange-juice.png"));
         catalog.add(createProduct("Classic Cola Can", "Carbonated fizzy soft drink can, 330ml.", "5.00", 500, beverages, "cola-can.png"));
@@ -177,7 +192,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Cold Brew Coffee", "Ready-to-drink unsweetened iced black coffee.", "9.90", 75, beverages, "cold-brew.png"));
         catalog.add(createProduct("Energy Drink", "High-caffeine functional energy beverage can.", "8.50", 260, beverages, "energy-drink.png"));
 
-        // 6. Snacks & Sweets
+        // Snacks & Sweets
         catalog.add(createProduct("Salty Potato Chips", "Classic salted crispy potato chips, 200g bag.", "7.90", 210, snacks, "potato-chips.png"));
         catalog.add(createProduct("Dark Chocolate 70%", "Premium cocoa Swiss dark chocolate bar, 70% cocoa, 100g.", "11.90", 160, snacks, "dark-chocolate.png"));
         catalog.add(createProduct("Tortilla Corn Chips", "Crunchy salted nacho-flavored corn chips, large pack.", "9.50", 140, snacks, "tortilla-chips.png"));
@@ -187,7 +202,7 @@ public class DataSeeder implements CommandLineRunner {
         catalog.add(createProduct("Microwave Popcorn", "Pack of 3 butter-flavored microwave popcorn bags.", "13.90", 95, snacks, "popcorn.png"));
         catalog.add(createProduct("Hazelnut Wafers", "Crispy wafer layers filled with rich hazelnut cream.", "8.00", 175, snacks, "hazelnut-wafers.png"));
 
-        // 7. Pantry Staples
+        // Pantry Staples
         catalog.add(createProduct("White Rice 1kg", "Long-grain premium polished white rice.", "8.90", 250, pantry, "rice.png"));
         catalog.add(createProduct("Spaghetti Pasta", "Traditional Italian durum wheat semolina pasta, 500g.", "5.50", 320, pantry, "spaghetti.png"));
         catalog.add(createProduct("Extra Virgin Olive Oil", "Cold-pressed premium extra virgin olive oil, 1L bottle.", "34.90", 85, pantry, "olive-oil.png"));
@@ -204,9 +219,19 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private Product createProduct(String name, String desc, String price, int stock, Category category, String imgFileName) {
-        Product product = Product.builder().name(name).description(desc).price(new BigDecimal(price)).stockQuantity(stock).category(category).build();
+        Product product = Product.builder()
+                .name(name)
+                .description(desc)
+                .price(new BigDecimal(price))
+                .stockQuantity(stock)
+                .category(category)
+                .build();
 
-        ProductImage image = ProductImage.builder().imageUrl(IMAGE_BASE_PATH + imgFileName).isPrimary(true).displayOrder(0).build();
+        ProductImage image = ProductImage.builder()
+                .imageUrl(IMAGE_BASE_PATH + imgFileName)
+                .isPrimary(true)
+                .displayOrder(0)
+                .build();
 
         product.addImage(image);
         return product;
