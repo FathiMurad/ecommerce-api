@@ -21,6 +21,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests verifying transactional event publication and asynchronous listener execution.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class OrderEventAsyncIntegrationTest {
@@ -43,13 +46,29 @@ class OrderEventAsyncIntegrationTest {
     void testOrderPlacedEventDispatchedAndProcessedAsynchronously() throws Exception {
         // 1. Add product #1 to guest cart
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
-        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         // 2. Execute Checkout -> Triggers commit and OrderPlacedEvent publication
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Event Tester", "async.tester@example.com", "Rabin St 12, Haifa");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andExpect(jsonPath("$.trackingNumber").isString()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Event Tester",
+                "async.tester@example.com",
+                "Rabin St 12, Haifa"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.trackingNumber").isString())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
