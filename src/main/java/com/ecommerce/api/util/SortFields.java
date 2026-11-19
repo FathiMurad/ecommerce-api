@@ -3,7 +3,7 @@ package com.ecommerce.api.util;
 import java.util.Set;
 
 /**
- * Central whitelist definitions for sortable entity properties across paginated endpoints.
+ * Defines allowed entity sort fields for paginated queries to prevent invalid property lookups.
  */
 public final class SortFields {
 

@@ -4,7 +4,7 @@ import java.security.SecureRandom;
 import java.util.HexFormat;
 
 /**
- * Cryptographically strong public identifier generator for order tracking numbers and payment transaction IDs.
+ * Generates cryptographically strong, unpredictable public identifiers for order tracking numbers and transaction IDs.
  */
 public final class PublicIdGenerator {
 
