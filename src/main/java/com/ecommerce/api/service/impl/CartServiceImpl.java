@@ -21,13 +21,13 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Service implementation for managing shopping carts.
+ * Service implementation managing shopping cart operations for authenticated users and guests.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class CartServiceImpl implements CartService {
+class CartServiceImpl implements CartService {
 
     private final CartResolver cartResolver;
     private final ProductRepository productRepository;
@@ -36,10 +36,14 @@ public class CartServiceImpl implements CartService {
     @Transactional
     public CartResponse getOrCreateCart(User user, String cartToken) {
         if (user != null) {
-            Cart cart = cartResolver.findForUser(user, cartToken).orElseGet(() -> cartResolver.createCart(user));
+            Cart cart = cartResolver.findForUser(user, cartToken)
+                    .orElseGet(() -> cartResolver.createCart(user));
             return CartResponse.fromEntity(cart);
         }
-        return cartResolver.findGuest(cartToken).map(CartResponse::fromEntity).orElseGet(CartResponse::empty);
+
+        return cartResolver.findGuest(cartToken)
+                .map(CartResponse::fromEntity)
+                .orElseGet(CartResponse::empty);
     }
 
     @Override
@@ -50,7 +54,9 @@ public class CartServiceImpl implements CartService {
         Product product = productRepository.getWithImagesOrThrow(request.productId());
         Optional<Cart> existingCart = findExistingCart(user, cartToken);
 
-        CartItem existingItem = existingCart.map(c -> findCartItem(c, product.getId())).orElse(null);
+        CartItem existingItem = existingCart
+                .map(cart -> findCartItem(cart, product.getId()))
+                .orElse(null);
         long existingQuantity = existingItem != null ? existingItem.getQuantity() : 0L;
 
         long targetQuantity = existingQuantity + request.quantity();
@@ -69,7 +75,8 @@ public class CartServiceImpl implements CartService {
         Objects.requireNonNull(productId, "Product ID cannot be null.");
         Objects.requireNonNull(request, "Update cart item request cannot be null.");
 
-        Cart cart = findExistingCart(user, cartToken).orElseThrow(() -> new ResourceNotFoundException("Item with product id " + productId + " not found in cart."));
+        Cart cart = findExistingCart(user, cartToken)
+                .orElseThrow(() -> new ResourceNotFoundException("Item with product id " + productId + " not found in cart."));
         CartItem targetItem = findCartItemOrThrow(cart, productId);
 
         Product product = productRepository.getOrThrow(productId);
@@ -112,12 +119,18 @@ public class CartServiceImpl implements CartService {
         if (user != null) {
             return cartResolver.findForUser(user, cartToken);
         }
+
         return cartResolver.findGuest(cartToken);
     }
 
     private void validateStockAvailability(Product product, long requestedQuantity) {
         if (requestedQuantity > product.getStockQuantity()) {
-            log.warn("Insufficient stock for product id={}: requested={}, available={}", product.getId(), requestedQuantity, product.getStockQuantity());
+            log.warn(
+                    "Insufficient stock for product id={}: requested={}, available={}",
+                    product.getId(),
+                    requestedQuantity,
+                    product.getStockQuantity()
+            );
             throw InsufficientStockException.of(product, requestedQuantity);
         }
     }
@@ -128,6 +141,7 @@ public class CartServiceImpl implements CartService {
                 return item;
             }
         }
+
         return null;
     }
 
@@ -136,6 +150,7 @@ public class CartServiceImpl implements CartService {
         if (item == null) {
             throw new ResourceNotFoundException("Item with product id " + productId + " not found in cart.");
         }
+
         return item;
     }
 }

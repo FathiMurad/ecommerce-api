@@ -28,6 +28,7 @@ public class CartResolver {
         if (cartToken == null || cartToken.isBlank()) {
             return Optional.empty();
         }
+
         Optional<Cart> existingCart = cartRepository.findByCartTokenWithItems(cartToken.trim());
         if (existingCart.isPresent()) {
             Cart cart = existingCart.get();
@@ -36,6 +37,7 @@ public class CartResolver {
             }
             log.warn("Anonymous access attempt to authenticated user cart via token.");
         }
+
         return Optional.empty();
     }
 
@@ -59,7 +61,12 @@ public class CartResolver {
     }
 
     public Cart createCart(User ownerOrNull) {
-        Cart newCart = Cart.builder().cartToken(UUID.randomUUID().toString()).user(ownerOrNull).items(new ArrayList<>()).build();
+        Cart newCart = Cart.builder()
+                .cartToken(UUID.randomUUID().toString())
+                .user(ownerOrNull)
+                .items(new ArrayList<>())
+                .build();
+
         return cartRepository.save(newCart);
     }
 
@@ -74,15 +81,18 @@ public class CartResolver {
     }
 
     private Optional<Cart> claimGuestCartIfExists(User user, String guestCartToken) {
-        return cartRepository.findByCartTokenWithItems(guestCartToken).filter(guestCart -> guestCart.getUser() == null).map(guestCart -> {
-            log.info("Claiming anonymous guest cart for user id={}", user.getId());
-            guestCart.setUser(user);
-            return guestCart;
-        });
+        return cartRepository.findByCartTokenWithItems(guestCartToken)
+                .filter(guestCart -> guestCart.getUser() == null)
+                .map(guestCart -> {
+                    log.info("Claiming anonymous guest cart for user id={}", user.getId());
+                    guestCart.setUser(user);
+                    return guestCart;
+                });
     }
 
     private void mergeItems(Cart userCart, Cart guestCart) {
         List<CartItem> guestItems = new ArrayList<>(guestCart.getItems());
+
         for (CartItem guestItem : guestItems) {
             Product product = guestItem.getProduct();
             int guestQty = guestItem.getQuantity();
@@ -111,6 +121,7 @@ public class CartResolver {
                 return item;
             }
         }
+
         return null;
     }
 }

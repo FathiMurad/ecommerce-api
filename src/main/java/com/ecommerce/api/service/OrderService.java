@@ -8,7 +8,7 @@ import com.ecommerce.api.entity.enums.OrderStatus;
 import org.springframework.data.domain.Pageable;
 
 /**
- * Service for managing orders and checkout operations.
+ * Service interface defining checkout, order retrieval, and order lifecycle state transitions.
  */
 public interface OrderService {
 

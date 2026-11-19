@@ -6,7 +6,7 @@ import com.ecommerce.api.dto.response.CategoryResponse;
 import java.util.List;
 
 /**
- * Service for managing product categories.
+ * Service interface defining CRUD operations for catalog product categories.
  */
 public interface CategoryService {
 

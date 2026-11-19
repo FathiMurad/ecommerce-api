@@ -21,13 +21,13 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Service implementation for managing product categories.
+ * Service implementation managing product categories, caching, and category lifecycle events.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class CategoryServiceImpl implements CategoryService {
+class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
@@ -36,7 +36,9 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Cacheable(value = CacheNames.CATEGORIES, key = "'all'")
     public List<CategoryResponse> getAllCategories() {
-        return categoryRepository.findAll().stream().map(CategoryResponse::fromEntity).toList();
+        return categoryRepository.findAll().stream()
+                .map(CategoryResponse::fromEntity)
+                .toList();
     }
 
     @Override
@@ -56,7 +58,10 @@ public class CategoryServiceImpl implements CategoryService {
         String name = request.getName().trim();
         ensureNameAvailable(name, null);
 
-        Category category = Category.builder().name(name).description(request.getDescription()).build();
+        Category category = Category.builder()
+                .name(name)
+                .description(request.getDescription())
+                .build();
         Category savedCategory = categoryRepository.save(category);
         log.info("Created category id={} with name='{}'", savedCategory.getId(), savedCategory.getName());
 
@@ -94,7 +99,10 @@ public class CategoryServiceImpl implements CategoryService {
 
         if (productRepository.existsByCategoryId(id)) {
             log.warn("Category deletion rejected: Category id={} contains associated products", id);
-            throw new ConflictException("Cannot delete category '" + category.getName() + "' because it contains associated products. Reassign or delete products first.");
+            throw new ConflictException(
+                    "Cannot delete category '" + category.getName()
+                            + "' because it contains associated products. Reassign or delete products first."
+            );
         }
 
         categoryRepository.delete(category);
@@ -102,7 +110,9 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private void ensureNameAvailable(String name, Long excludeId) {
-        boolean exists = (excludeId == null) ? categoryRepository.existsByNameIgnoreCase(name) : categoryRepository.existsByNameIgnoreCaseAndIdNot(name, excludeId);
+        boolean exists = (excludeId == null)
+                ? categoryRepository.existsByNameIgnoreCase(name)
+                : categoryRepository.existsByNameIgnoreCaseAndIdNot(name, excludeId);
 
         if (exists) {
             log.warn("Category operation rejected: Name '{}' already exists", name);

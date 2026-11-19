@@ -28,13 +28,13 @@ import java.math.RoundingMode;
 import java.util.Objects;
 
 /**
- * Service implementation for managing payment transactions using a simulated payment gateway.
+ * Service implementation handling simulated payment gateway processing, retry limits, and order status updates.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class PaymentServiceImpl implements PaymentService {
+class PaymentServiceImpl implements PaymentService {
 
     private static final int MAX_FAILED_ATTEMPTS = 5;
 
@@ -44,8 +44,12 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderAccessPolicy orderAccessPolicy;
     private final MeterRegistry meterRegistry;
 
-    private record Outcome(PaymentStatus paymentStatus, OrderStatus orderStatusOrNull, String failureReason,
-                           String metricLabel) {
+    private record Outcome(
+            PaymentStatus paymentStatus,
+            OrderStatus orderStatusOrNull,
+            String failureReason,
+            String metricLabel
+    ) {
     }
 
     @Override
@@ -62,7 +66,9 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = resolvePayment(order);
         int currentFailures = payment.getFailedAttempts() != null ? payment.getFailedAttempts() : 0;
         if (currentFailures >= MAX_FAILED_ATTEMPTS) {
-            throw new ConflictException("Maximum payment retry attempts (" + MAX_FAILED_ATTEMPTS + ") exceeded for order: " + order.getTrackingNumber());
+            throw new ConflictException(
+                    "Maximum payment retry attempts (" + MAX_FAILED_ATTEMPTS + ") exceeded for order: " + order.getTrackingNumber()
+            );
         }
 
         Timer.Sample sample = Timer.start(meterRegistry);
@@ -75,7 +81,14 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setPaymentMethod(request.getPaymentMethod());
 
             boolean isDeclined = request.getCardNumber() != null && request.getCardNumber().endsWith("0000");
-            Outcome outcome = isDeclined ? new Outcome(PaymentStatus.FAILED, null, "Card declined by issuing bank (insufficient funds / test decline)", "declined") : new Outcome(PaymentStatus.COMPLETED, OrderStatus.CONFIRMED, null, "approved");
+            Outcome outcome = isDeclined
+                    ? new Outcome(
+                    PaymentStatus.FAILED,
+                    null,
+                    "Card declined by issuing bank (insufficient funds / test decline)",
+                    "declined"
+            )
+                    : new Outcome(PaymentStatus.COMPLETED, OrderStatus.CONFIRMED, null, "approved");
 
             PaymentResponse response = finalizePayment(payment, order, outcome, currentFailures);
             outcomeLabel = outcome.metricLabel();
@@ -93,17 +106,33 @@ public class PaymentServiceImpl implements PaymentService {
         if (outcome.paymentStatus() == PaymentStatus.FAILED) {
             int updatedFailures = currentFailures + 1;
             payment.setFailedAttempts(updatedFailures);
-            log.warn("Payment declined for trackingNumber={}, transactionId={}, attempt={}", order.getTrackingNumber(), payment.getTransactionId(), updatedFailures);
+            log.warn(
+                    "Payment declined for trackingNumber={}, transactionId={}, attempt={}",
+                    order.getTrackingNumber(),
+                    payment.getTransactionId(),
+                    updatedFailures
+            );
         } else {
-            log.info("Payment completed successfully for trackingNumber={}, transactionId={}, amount={}", order.getTrackingNumber(), payment.getTransactionId(), payment.getAmount());
+            log.info(
+                    "Payment completed successfully for trackingNumber={}, transactionId={}, amount={}",
+                    order.getTrackingNumber(),
+                    payment.getTransactionId(),
+                    payment.getAmount()
+            );
         }
 
         Payment savedPayment = paymentRepository.save(payment);
 
         if (outcome.orderStatusOrNull() != null) {
             orderService.updateOrderStatus(order.getTrackingNumber(), outcome.orderStatusOrNull());
-        } else if (outcome.paymentStatus() == PaymentStatus.FAILED && savedPayment.getFailedAttempts() != null && savedPayment.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            log.warn("Maximum payment retry attempts ({}) reached for trackingNumber={}. Cancelling order and restoring stock.", MAX_FAILED_ATTEMPTS, order.getTrackingNumber());
+        } else if (outcome.paymentStatus() == PaymentStatus.FAILED
+                && savedPayment.getFailedAttempts() != null
+                && savedPayment.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+            log.warn(
+                    "Maximum payment retry attempts ({}) reached for trackingNumber={}. Cancelling order and restoring stock.",
+                    MAX_FAILED_ATTEMPTS,
+                    order.getTrackingNumber()
+            );
             orderService.updateOrderStatus(order.getTrackingNumber(), OrderStatus.CANCELLED);
         }
 
@@ -116,11 +145,14 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (request.getAmount() != null && request.getAmount().compareTo(order.getTotalAmount()) != 0) {
-            throw new BusinessRuleViolationException("Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ").");
+            throw new BusinessRuleViolationException(
+                    "Payment amount (" + request.getAmount() + ") does not match order total (" + order.getTotalAmount() + ")."
+            );
         }
     }
 
     private Payment resolvePayment(Order order) {
-        return paymentRepository.findByOrderId(order.getId()).orElseGet(() -> Payment.builder().order(order).build());
+        return paymentRepository.findByOrderId(order.getId())
+                .orElseGet(() -> Payment.builder().order(order).build());
     }
 }

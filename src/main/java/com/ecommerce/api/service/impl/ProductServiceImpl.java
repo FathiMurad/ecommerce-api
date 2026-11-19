@@ -28,13 +28,13 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Service implementation for managing catalog products and inventory.
+ * Service implementation managing catalog products, product images, and inventory caching.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class ProductServiceImpl implements ProductService {
+class ProductServiceImpl implements ProductService {
 
     private static final int PRIMARY_IMAGE_INDEX = 0;
 
@@ -114,7 +114,9 @@ public class ProductServiceImpl implements ProductService {
 
         if (orderItemRepository.existsByProductId(id)) {
             log.warn("Product deletion rejected: Product id={} is referenced in existing orders", id);
-            throw new ConflictException("Cannot delete product '" + product.getName() + "' because it is referenced in existing orders.");
+            throw new ConflictException(
+                    "Cannot delete product '" + product.getName() + "' because it is referenced in existing orders."
+            );
         }
 
         productRepository.delete(product);
@@ -143,7 +145,11 @@ public class ProductServiceImpl implements ProductService {
 
         for (int i = 0; i < cleanUrls.size(); i++) {
             boolean isPrimary = (i == PRIMARY_IMAGE_INDEX);
-            ProductImage image = ProductImage.builder().imageUrl(cleanUrls.get(i)).isPrimary(isPrimary).displayOrder(i).build();
+            ProductImage image = ProductImage.builder()
+                    .imageUrl(cleanUrls.get(i))
+                    .isPrimary(isPrimary)
+                    .displayOrder(i)
+                    .build();
             product.addImage(image);
         }
     }

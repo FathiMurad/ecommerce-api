@@ -5,7 +5,7 @@ import com.ecommerce.api.dto.response.PaymentResponse;
 import com.ecommerce.api.entity.User;
 
 /**
- * Service for managing payment transactions.
+ * Service interface defining payment processing operations for customer orders.
  */
 public interface PaymentService {
 

@@ -6,7 +6,7 @@ import com.ecommerce.api.dto.response.CartResponse;
 import com.ecommerce.api.entity.User;
 
 /**
- * Service for managing shopping carts for users and guests.
+ * Service interface defining shopping cart operations for authenticated users and anonymous guests.
  */
 public interface CartService {
 

@@ -1,4 +1,4 @@
-package com.ecommerce.api.service;
+package com.ecommerce.api.service.impl;
 
 import com.ecommerce.api.entity.Order;
 import com.ecommerce.api.entity.User;
@@ -6,7 +6,6 @@ import com.ecommerce.api.entity.enums.Role;
 import com.ecommerce.api.exception.ResourceNotFoundException;
 import com.ecommerce.api.repository.OrderRepository;
 import com.ecommerce.api.security.OrderAccessPolicy;
-import com.ecommerce.api.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

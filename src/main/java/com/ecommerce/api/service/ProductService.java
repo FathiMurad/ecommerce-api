@@ -6,7 +6,7 @@ import com.ecommerce.api.dto.response.ProductResponse;
 import org.springframework.data.domain.Pageable;
 
 /**
- * Service for managing catalog products and inventory.
+ * Service interface defining catalog product management, filtering, and inventory operations.
  */
 public interface ProductService {
 

@@ -5,7 +5,7 @@ import com.ecommerce.api.dto.request.RegisterRequest;
 import com.ecommerce.api.dto.response.AuthenticationResponse;
 
 /**
- * Service for user login and registration.
+ * Service interface defining user registration and authentication operations.
  */
 public interface AuthenticationService {
 

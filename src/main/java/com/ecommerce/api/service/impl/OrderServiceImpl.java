@@ -51,13 +51,13 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * Service implementation for managing orders and checkout operations.
+ * Service implementation managing order checkout, stock reservation, and order lifecycle state transitions.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class OrderServiceImpl implements OrderService {
+class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final CartResolver cartResolver;
@@ -112,6 +112,7 @@ public class OrderServiceImpl implements OrderService {
         String normalizedEmail = Emails.normalize(customerEmail);
         Pageable safePageable = PageRequests.safe(pageable, SortFields.ORDER_SORT_FIELDS, "id");
         Page<Order> orderPage = orderRepository.findByCustomerEmailIgnoreCase(normalizedEmail, safePageable);
+
         return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
 
@@ -122,12 +123,17 @@ public class OrderServiceImpl implements OrderService {
 
         Pageable safePageable = PageRequests.safe(pageable, SortFields.ORDER_SORT_FIELDS, "id");
         Page<Order> orderPage = orderRepository.findByUserId(user.getId(), safePageable);
+
         return PagedResponse.from(orderPage, OrderResponse::fromEntity);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheNames.PRODUCTS, allEntries = true, condition = "#newStatus == T(com.ecommerce.api.entity.enums.OrderStatus).CANCELLED")
+    @CacheEvict(
+            value = CacheNames.PRODUCTS,
+            allEntries = true,
+            condition = "#newStatus == T(com.ecommerce.api.entity.enums.OrderStatus).CANCELLED"
+    )
     public OrderResponse updateOrderStatus(String trackingNumber, OrderStatus newStatus) {
         Objects.requireNonNull(trackingNumber, "Tracking number cannot be null.");
         Objects.requireNonNull(newStatus, "New status cannot be null.");
@@ -147,7 +153,8 @@ public class OrderServiceImpl implements OrderService {
             throw new ConflictException("Cannot transition order from " + currentStatus + " to " + newStatus);
         }
 
-        if (newStatus == OrderStatus.CONFIRMED && (order.getId() == null || !paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.COMPLETED))) {
+        if (newStatus == OrderStatus.CONFIRMED
+                && (order.getId() == null || !paymentRepository.existsByOrderIdAndStatus(order.getId(), PaymentStatus.COMPLETED))) {
             throw new BusinessRuleViolationException("Order cannot be confirmed without a completed payment.");
         }
 
@@ -201,7 +208,11 @@ public class OrderServiceImpl implements OrderService {
                 if (payment.getStatus() == PaymentStatus.COMPLETED) {
                     payment.setStatus(PaymentStatus.REFUNDED);
                     paymentRepository.save(payment);
-                    log.info("Marked payment transactionId={} as REFUNDED on cancellation of order trackingNumber={}", payment.getTransactionId(), order.getTrackingNumber());
+                    log.info(
+                            "Marked payment transactionId={} as REFUNDED on cancellation of order trackingNumber={}",
+                            payment.getTransactionId(),
+                            order.getTrackingNumber()
+                    );
                 } else if (payment.getStatus() == PaymentStatus.PENDING) {
                     payment.setStatus(PaymentStatus.FAILED);
                     payment.setFailureReason("Order cancelled before payment completion.");
@@ -233,9 +244,11 @@ public class OrderServiceImpl implements OrderService {
         if (user == null) {
             return null;
         }
+
         String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
         String last = user.getLastName() != null ? user.getLastName().trim() : "";
         String full = (first + " " + last).trim();
+
         return full.isEmpty() ? null : full;
     }
 
@@ -245,11 +258,20 @@ public class OrderServiceImpl implements OrderService {
                 return value.trim();
             }
         }
+
         return null;
     }
 
     private Order buildInitialOrder(User user, CustomerDetails details) {
-        return Order.builder().trackingNumber(PublicIdGenerator.generateTrackingNumber()).user(user).customerName(details.name()).customerEmail(details.email()).shippingAddress(details.address()).status(OrderStatus.PENDING).items(new ArrayList<>()).build();
+        return Order.builder()
+                .trackingNumber(PublicIdGenerator.generateTrackingNumber())
+                .user(user)
+                .customerName(details.name())
+                .customerEmail(details.email())
+                .shippingAddress(details.address())
+                .status(OrderStatus.PENDING)
+                .items(new ArrayList<>())
+                .build();
     }
 
     private void deductStockAndCreateOrderItems(Order order, Cart cart) {
@@ -264,15 +286,31 @@ public class OrderServiceImpl implements OrderService {
                 throw InsufficientStockException.of(product, cartItem.getQuantity());
             }
 
-            OrderItem orderItem = OrderItem.builder().product(product).quantity(cartItem.getQuantity()).priceAtPurchase(product.getPrice()).build();
+            OrderItem orderItem = OrderItem.builder()
+                    .product(product)
+                    .quantity(cartItem.getQuantity())
+                    .priceAtPurchase(product.getPrice())
+                    .build();
             order.addItem(orderItem);
         }
     }
 
     private void notifyOrderPlaced(Order order) {
-        log.info("Order created successfully: orderId={}, trackingNumber={}, totalAmount={}, status={}", order.getId(), order.getTrackingNumber(), order.getTotalAmount(), order.getStatus());
+        log.info(
+                "Order created successfully: orderId={}, trackingNumber={}, totalAmount={}, status={}",
+                order.getId(),
+                order.getTrackingNumber(),
+                order.getTotalAmount(),
+                order.getStatus()
+        );
         afterCommit(() -> meterRegistry.counter("ecommerce.orders.created", "status", "pending").increment());
-        eventPublisher.publishEvent(new OrderPlacedEvent(order.getId(), order.getTrackingNumber(), order.getCustomerEmail(), order.getCustomerName(), order.getTotalAmount()));
+        eventPublisher.publishEvent(new OrderPlacedEvent(
+                order.getId(),
+                order.getTrackingNumber(),
+                order.getCustomerEmail(),
+                order.getCustomerName(),
+                order.getTotalAmount()
+        ));
     }
 
     private void restoreStockForOrder(Order order) {
@@ -282,7 +320,12 @@ public class OrderServiceImpl implements OrderService {
             if (productRepository.incrementStock(productId, item.getQuantity()) == 0) {
                 throw ResourceNotFoundException.of("Product", productId);
             }
-            log.info("Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}", productId, item.getQuantity(), order.getTrackingNumber());
+            log.info(
+                    "Restored stock for product id={} by quantity={} from cancelled order trackingNumber={}",
+                    productId,
+                    item.getQuantity(),
+                    order.getTrackingNumber()
+            );
         }
     }
 
@@ -294,9 +337,12 @@ public class OrderServiceImpl implements OrderService {
 
     private Cart resolveCartForCheckout(User user, String cartToken) {
         if (user != null) {
-            return cartResolver.findForUser(user, cartToken).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for user."));
+            return cartResolver.findForUser(user, cartToken)
+                    .orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for user."));
         }
-        return cartResolver.findGuest(cartToken).orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for checkout."));
+
+        return cartResolver.findGuest(cartToken)
+                .orElseThrow(() -> new ResourceNotFoundException("No active shopping cart found for checkout."));
     }
 
     private void afterCommit(Runnable action) {
