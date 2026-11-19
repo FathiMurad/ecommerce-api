@@ -52,10 +52,10 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
 
-    @Value("${app.security.pepper:${application.security.pepper}}")
+    @Value("${app.security.pepper}")
     private String pepperKey;
 
-    @Value("${app.cors.allowed-origins:${application.cors.allowed-origins:http://localhost:3000,http://localhost:5173}}")
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private String allowedOrigins;
 
     @Bean
