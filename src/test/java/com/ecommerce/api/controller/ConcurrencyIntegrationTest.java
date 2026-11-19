@@ -43,6 +43,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests verifying concurrency safety, overselling prevention, and idempotency under parallel load.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class ConcurrencyIntegrationTest {
@@ -70,12 +73,23 @@ class ConcurrencyIntegrationTest {
     @Test
     @DisplayName("Atomic Stock Update: Prevent overselling and false version collisions when multiple threads checkout in parallel")
     void testConcurrentCheckoutPreventsOverselling() throws Exception {
-        Category category = categoryRepository.findById(1L).orElseGet(() -> categoryRepository.save(Category.builder().name("Electronics").description("Test").build()));
+        Category category = categoryRepository.findById(1L)
+                .orElseGet(() -> categoryRepository.save(Category.builder()
+                        .name("Electronics")
+                        .description("Test")
+                        .build()));
 
         int initialStock = 3;
         int concurrentUsers = 10;
 
-        Product limitedProduct = productRepository.saveAndFlush(Product.builder().name("Limited Edition RTX 5090").description("Exclusive limited stock item").price(new BigDecimal("1999.99")).stockQuantity(initialStock).category(category).images(Collections.emptyList()).build());
+        Product limitedProduct = productRepository.saveAndFlush(Product.builder()
+                .name("Limited Edition RTX 5090")
+                .description("Exclusive limited stock item")
+                .price(new BigDecimal("1999.99"))
+                .stockQuantity(initialStock)
+                .category(category)
+                .images(Collections.emptyList())
+                .build());
 
         Long productId = limitedProduct.getId();
 
@@ -83,10 +97,15 @@ class ConcurrencyIntegrationTest {
         for (int i = 0; i < concurrentUsers; i++) {
             final int index = i;
             AddToCartRequest addRequest = new AddToCartRequest(productId, 1);
-            MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(request -> {
-                request.setRemoteAddr("192.168.100." + index);
-                return request;
-            })).andExpect(status().isOk()).andReturn();
+            MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(addRequest))
+                            .with(request -> {
+                                request.setRemoteAddr("192.168.100." + index);
+                                return request;
+                            }))
+                    .andExpect(status().isOk())
+                    .andReturn();
 
             JsonNode cartNode = objectMapper.readTree(addResult.getResponse().getContentAsString());
             cartTokens.add(cartNode.get("cartToken").asText());
@@ -110,12 +129,21 @@ class ConcurrencyIntegrationTest {
                     try {
                         startLatch.await();
 
-                        CheckoutRequest checkoutRequest = new CheckoutRequest("Concurrent Buyer " + index, "buyer" + index + "@concurrency.com", "Main Street " + (100 + index) + ", Tel Aviv");
+                        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                                "Concurrent Buyer " + index,
+                                "buyer" + index + "@concurrency.com",
+                                "Main Street " + (100 + index) + ", Tel Aviv"
+                        );
 
-                        MvcResult result = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest)).with(request -> {
-                            request.setRemoteAddr("192.168.100." + index);
-                            return request;
-                        })).andReturn();
+                        MvcResult result = mockMvc.perform(post("/api/orders/checkout")
+                                        .header("X-Cart-Token", cartToken)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsString(checkoutRequest))
+                                        .with(request -> {
+                                            request.setRemoteAddr("192.168.100." + index);
+                                            return request;
+                                        }))
+                                .andReturn();
 
                         int statusCode = result.getResponse().getStatus();
                         if (statusCode == 201) {
@@ -139,7 +167,9 @@ class ConcurrencyIntegrationTest {
         }
 
         assertThat(successCount.get()).isEqualTo(initialStock);
-        assertThat(conflictBodies).hasSize(concurrentUsers - initialStock).allSatisfy(body -> assertThat(body).contains("Insufficient stock"));
+        assertThat(conflictBodies)
+                .hasSize(concurrentUsers - initialStock)
+                .allSatisfy(body -> assertThat(body).contains("Insufficient stock"));
         assertThat(unexpectedStatusCount.get()).isZero();
         assertThat(productRepository.findById(productId).orElseThrow().getStockQuantity()).isZero();
     }
@@ -147,20 +177,38 @@ class ConcurrencyIntegrationTest {
     @Test
     @DisplayName("Duplicate concurrent checkout on the exact same cart token persists one order and empties cart")
     void testConcurrentCheckoutSameCartCreatesSingleOrder() throws Exception {
-        Category category = categoryRepository.findById(1L).orElseGet(() -> categoryRepository.save(Category.builder().name("Electronics").description("Test").build()));
+        Category category = categoryRepository.findById(1L)
+                .orElseGet(() -> categoryRepository.save(Category.builder()
+                        .name("Electronics")
+                        .description("Test")
+                        .build()));
 
-        Product product = productRepository.saveAndFlush(Product.builder().name("Single Cart Race Test Item").description("Concurrency guard verification").price(new BigDecimal("50.00")).stockQuantity(10).category(category).images(Collections.emptyList()).build());
+        Product product = productRepository.saveAndFlush(Product.builder()
+                .name("Single Cart Race Test Item")
+                .description("Concurrency guard verification")
+                .price(new BigDecimal("50.00"))
+                .stockQuantity(10)
+                .category(category)
+                .images(Collections.emptyList())
+                .build());
 
         Long productId = product.getId();
         long ordersBefore = orderRepository.count();
 
         AddToCartRequest addRequest = new AddToCartRequest(productId, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(request -> {
-            request.setRemoteAddr("192.168.150.1");
-            return request;
-        })).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest))
+                        .with(request -> {
+                            request.setRemoteAddr("192.168.150.1");
+                            return request;
+                        }))
+                .andExpect(status().isOk())
+                .andReturn();
 
-        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
         String raceEmail = "doubleclick-" + UUID.randomUUID() + "@example.com";
 
         int threads = 2;
@@ -180,11 +228,20 @@ class ConcurrencyIntegrationTest {
                     try {
                         startLatch.await();
 
-                        CheckoutRequest checkoutRequest = new CheckoutRequest("Double Click Buyer", raceEmail, "Rothschild 1, Tel Aviv");
-                        MvcResult result = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest)).with(request -> {
-                            request.setRemoteAddr("192.168.150." + (10 + index));
-                            return request;
-                        })).andReturn();
+                        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                                "Double Click Buyer",
+                                raceEmail,
+                                "Rothschild 1, Tel Aviv"
+                        );
+                        MvcResult result = mockMvc.perform(post("/api/orders/checkout")
+                                        .header("X-Cart-Token", cartToken)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsString(checkoutRequest))
+                                        .with(request -> {
+                                            request.setRemoteAddr("192.168.150." + (10 + index));
+                                            return request;
+                                        }))
+                                .andReturn();
 
                         int status = result.getResponse().getStatus();
                         if (status == 201) {
@@ -207,34 +264,70 @@ class ConcurrencyIntegrationTest {
             assertThat(doneLatch.await(15, TimeUnit.SECONDS)).isTrue();
         }
 
-        assertThat(createdCount.get()).as("Exactly one checkout must succeed").isEqualTo(1);
-        assertThat(clientErrorCount.get()).as("Duplicate concurrent checkout must fail with 4xx").isEqualTo(1);
+        assertThat(createdCount.get())
+                .as("Exactly one checkout must succeed")
+                .isEqualTo(1);
+        assertThat(clientErrorCount.get())
+                .as("Duplicate concurrent checkout must fail with 4xx")
+                .isEqualTo(1);
         assertThat(unexpectedCount.get()).isZero();
-        assertThat(orderRepository.count()).as("Exactly one order must be persisted in DB").isEqualTo(ordersBefore + 1);
+        assertThat(orderRepository.count())
+                .as("Exactly one order must be persisted in DB")
+                .isEqualTo(ordersBefore + 1);
         assertThat(productRepository.findById(productId).orElseThrow().getStockQuantity()).isEqualTo(9);
-        assertThat(cartRepository.findByCartTokenWithItems(cartToken).orElseThrow().getItems()).as("Original cart must be empty after checkout").isEmpty();
+        assertThat(cartRepository.findByCartTokenWithItems(cartToken).orElseThrow().getItems())
+                .as("Original cart must be empty after checkout")
+                .isEmpty();
     }
 
     @Test
     @DisplayName("Concurrent payment requests on the same PENDING order settle at most once and reject duplicate with 409")
     void testConcurrentPaymentOnSameOrderSettlesOnce() throws Exception {
-        Category category = categoryRepository.findById(1L).orElseGet(() -> categoryRepository.save(Category.builder().name("Electronics").description("Test").build()));
+        Category category = categoryRepository.findById(1L)
+                .orElseGet(() -> categoryRepository.save(Category.builder()
+                        .name("Electronics")
+                        .description("Test")
+                        .build()));
 
-        Product product = productRepository.saveAndFlush(Product.builder().name("Concurrent Payment Item").description("Payment race test").price(new BigDecimal("75.00")).stockQuantity(5).category(category).images(Collections.emptyList()).build());
+        Product product = productRepository.saveAndFlush(Product.builder()
+                .name("Concurrent Payment Item")
+                .description("Payment race test")
+                .price(new BigDecimal("75.00"))
+                .stockQuantity(5)
+                .category(category)
+                .images(Collections.emptyList())
+                .build());
 
         AddToCartRequest addRequest = new AddToCartRequest(product.getId(), 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(request -> {
-            request.setRemoteAddr("192.168.160.1");
-            return request;
-        })).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest))
+                        .with(request -> {
+                            request.setRemoteAddr("192.168.160.1");
+                            return request;
+                        }))
+                .andExpect(status().isOk())
+                .andReturn();
 
-        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Concurrent Payer", "payrace-" + UUID.randomUUID() + "@example.com", "Dizengoff 10, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest)).with(request -> {
-            request.setRemoteAddr("192.168.160.2");
-            return request;
-        })).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Concurrent Payer",
+                "payrace-" + UUID.randomUUID() + "@example.com",
+                "Dizengoff 10, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest))
+                        .with(request -> {
+                            request.setRemoteAddr("192.168.160.2");
+                            return request;
+                        }))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode orderNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         long orderId = orderNode.get("id").asLong();
@@ -242,7 +335,14 @@ class ConcurrencyIntegrationTest {
         BigDecimal totalAmount = new BigDecimal(orderNode.get("totalAmount").asText());
 
         String futureExpiry = YearMonth.now().plusYears(2).format(DateTimeFormatter.ofPattern("MM/yy"));
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Concurrent Payer").expiryDate(futureExpiry).cvv("123").build();
+        PaymentRequest paymentRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Concurrent Payer")
+                .expiryDate(futureExpiry)
+                .cvv("123")
+                .build();
         String paymentJson = objectMapper.writeValueAsString(paymentRequest);
 
         int threads = 2;
@@ -262,10 +362,14 @@ class ConcurrencyIntegrationTest {
                     try {
                         startLatch.await();
 
-                        MvcResult result = mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(paymentJson).with(request -> {
-                            request.setRemoteAddr("192.168.160." + (10 + index));
-                            return request;
-                        })).andReturn();
+                        MvcResult result = mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(paymentJson)
+                                        .with(request -> {
+                                            request.setRemoteAddr("192.168.160." + (10 + index));
+                                            return request;
+                                        }))
+                                .andReturn();
 
                         int status = result.getResponse().getStatus();
                         if (status == 200) {
@@ -288,8 +392,12 @@ class ConcurrencyIntegrationTest {
             assertThat(doneLatch.await(15, TimeUnit.SECONDS)).isTrue();
         }
 
-        assertThat(okCount.get()).as("Exactly one payment must succeed").isEqualTo(1);
-        assertThat(conflictCount.get()).as("Concurrent duplicate payment must fail with 409 Conflict").isEqualTo(1);
+        assertThat(okCount.get())
+                .as("Exactly one payment must succeed")
+                .isEqualTo(1);
+        assertThat(conflictCount.get())
+                .as("Concurrent duplicate payment must fail with 409 Conflict")
+                .isEqualTo(1);
         assertThat(unexpectedCount.get()).isZero();
 
         Order settledOrder = orderRepository.findById(orderId).orElseThrow();

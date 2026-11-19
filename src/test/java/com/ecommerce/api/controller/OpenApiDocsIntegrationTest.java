@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests verifying OpenAPI specification generation, security requirements, and endpoint documentation.
+ */
 @SpringBootTest(properties = "springdoc.api-docs.enabled=true")
 @AutoConfigureMockMvc
 class OpenApiDocsIntegrationTest {
@@ -26,7 +29,9 @@ class OpenApiDocsIntegrationTest {
     @Test
     @DisplayName("GET /v3/api-docs returns valid OpenAPI JSON with accurate security metadata, license, and checkout docs")
     void testOpenApiDocsMetadataAndSecurityAccuracy() throws Exception {
-        MvcResult result = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn();
 
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
 
@@ -43,13 +48,19 @@ class OpenApiDocsIntegrationTest {
         assertThat(getCartSecurity.toString()).contains("{}");
 
         JsonNode checkoutOp = root.path("paths").path("/api/orders/checkout").path("post");
-        assertThat(checkoutOp.path("description").asText()).contains("PENDING").doesNotContain("confirmed order");
+        assertThat(checkoutOp.path("description").asText())
+                .contains("PENDING")
+                .doesNotContain("confirmed order");
 
         // 3. Protected customer & admin endpoints must require bearerAuth without empty {}
         JsonNode myOrdersSecurity = root.path("paths").path("/api/orders/my-orders").path("get").path("security");
-        assertThat(myOrdersSecurity.toString()).contains("bearerAuth").doesNotContain("{}");
+        assertThat(myOrdersSecurity.toString())
+                .contains("bearerAuth")
+                .doesNotContain("{}");
 
         JsonNode adminSearchSecurity = root.path("paths").path("/api/orders").path("get").path("security");
-        assertThat(adminSearchSecurity.toString()).contains("bearerAuth").doesNotContain("{}");
+        assertThat(adminSearchSecurity.toString())
+                .contains("bearerAuth")
+                .doesNotContain("{}");
     }
 }

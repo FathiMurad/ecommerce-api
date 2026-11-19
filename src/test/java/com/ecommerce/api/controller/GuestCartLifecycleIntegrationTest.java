@@ -34,6 +34,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests verifying anonymous cart persistence prevention, abandoned cart cleanup, and concurrent read safety.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
@@ -58,7 +61,13 @@ class GuestCartLifecycleIntegrationTest {
     void testAnonymousGetCartWithoutTokenDoesNotInsertDatabaseRow() throws Exception {
         long cartsBefore = cartRepository.count();
 
-        mockMvc.perform(get("/api/cart")).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(nullValue())).andExpect(jsonPath("$.cartToken").value(nullValue())).andExpect(jsonPath("$.items").isEmpty()).andExpect(jsonPath("$.totalAmount").value(0.00)).andExpect(jsonPath("$.totalItems").value(0));
+        mockMvc.perform(get("/api/cart"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(nullValue()))
+                .andExpect(jsonPath("$.cartToken").value(nullValue()))
+                .andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.totalAmount").value(0.00))
+                .andExpect(jsonPath("$.totalItems").value(0));
 
         assertThat(cartRepository.count()).isEqualTo(cartsBefore);
     }
@@ -68,9 +77,13 @@ class GuestCartLifecycleIntegrationTest {
     void testAnonymousRemoveAndClearWithoutCartDoNotInsertDatabaseRow() throws Exception {
         long cartsBefore = cartRepository.count();
 
-        mockMvc.perform(delete("/api/cart/items/1")).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(nullValue())).andExpect(jsonPath("$.items").isEmpty());
+        mockMvc.perform(delete("/api/cart/items/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(nullValue()))
+                .andExpect(jsonPath("$.items").isEmpty());
 
-        mockMvc.perform(delete("/api/cart")).andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/cart"))
+                .andExpect(status().isNoContent());
 
         assertThat(cartRepository.count()).isEqualTo(cartsBefore);
     }
@@ -81,16 +94,31 @@ class GuestCartLifecycleIntegrationTest {
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
 
         // 1. Create an old guest cart (31 days inactive)
-        MvcResult oldCartResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
-        String oldCartToken = objectMapper.readTree(oldCartResult.getResponse().getContentAsString()).get("cartToken").asText();
+        MvcResult oldCartResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String oldCartToken = objectMapper.readTree(oldCartResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         // 2. Create a recent guest cart (active today)
-        MvcResult recentCartResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
-        String recentCartToken = objectMapper.readTree(recentCartResult.getResponse().getContentAsString()).get("cartToken").asText();
+        MvcResult recentCartResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String recentCartToken = objectMapper.readTree(recentCartResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         // Backdate updated_at of the old cart to 31 days ago
         entityManager.flush();
-        entityManager.createQuery("UPDATE Cart c SET c.updatedAt = :expiredAt WHERE c.cartToken = :token").setParameter("expiredAt", LocalDateTime.now().minusDays(31)).setParameter("token", oldCartToken).executeUpdate();
+        entityManager.createQuery("UPDATE Cart c SET c.updatedAt = :expiredAt WHERE c.cartToken = :token")
+                .setParameter("expiredAt", LocalDateTime.now().minusDays(31))
+                .setParameter("token", oldCartToken)
+                .executeUpdate();
         entityManager.flush();
         entityManager.clear();
 
@@ -109,18 +137,31 @@ class GuestCartLifecycleIntegrationTest {
     void testCleanupPreservesOldGuestCartAfterRecentActivity() throws Exception {
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
 
-        MvcResult cartResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
-        String cartToken = objectMapper.readTree(cartResult.getResponse().getContentAsString()).get("cartToken").asText();
+        MvcResult cartResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String cartToken = objectMapper.readTree(cartResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         LocalDateTime thirtyOneDaysAgo = LocalDateTime.now().minusDays(31);
         entityManager.flush();
-        entityManager.createQuery("UPDATE Cart c SET c.updatedAt = :expiredAt WHERE c.cartToken = :token").setParameter("expiredAt", thirtyOneDaysAgo).setParameter("token", cartToken).executeUpdate();
+        entityManager.createQuery("UPDATE Cart c SET c.updatedAt = :expiredAt WHERE c.cartToken = :token")
+                .setParameter("expiredAt", thirtyOneDaysAgo)
+                .setParameter("token", cartToken)
+                .executeUpdate();
         entityManager.flush();
         entityManager.clear();
 
         // Perform real cart activity (updating item quantity)
         UpdateCartItemRequest updateRequest = new UpdateCartItemRequest(2);
-        mockMvc.perform(put("/api/cart/items/1").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(updateRequest))).andExpect(status().isOk());
+        mockMvc.perform(put("/api/cart/items/1")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isOk());
 
         entityManager.flush();
         entityManager.clear();
@@ -140,11 +181,18 @@ class GuestCartLifecycleIntegrationTest {
     @DisplayName("Concurrent GET /api/cart requests with the same X-Cart-Token both succeed with 200 OK without version conflicts")
     void testConcurrentGetGuestCartDoesNotCauseVersionConflict() throws Exception {
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest)).with(req -> {
-            req.setRemoteAddr("192.168.180.1");
-            return req;
-        })).andExpect(status().isOk()).andReturn();
-        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest))
+                        .with(req -> {
+                            req.setRemoteAddr("192.168.180.1");
+                            return req;
+                        }))
+                .andExpect(status().isOk())
+                .andReturn();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         int threads = 2;
         CountDownLatch readyLatch = new CountDownLatch(threads);
@@ -159,10 +207,15 @@ class GuestCartLifecycleIntegrationTest {
                     readyLatch.countDown();
                     try {
                         startLatch.await();
-                        int status = mockMvc.perform(get("/api/cart").header("X-Cart-Token", cartToken).with(req -> {
-                            req.setRemoteAddr("192.168.180." + (10 + idx));
-                            return req;
-                        })).andReturn().getResponse().getStatus();
+                        int status = mockMvc.perform(get("/api/cart")
+                                        .header("X-Cart-Token", cartToken)
+                                        .with(req -> {
+                                            req.setRemoteAddr("192.168.180." + (10 + idx));
+                                            return req;
+                                        }))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus();
                         if (status == 200) {
                             okCount.incrementAndGet();
                         }

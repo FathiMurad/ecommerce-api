@@ -24,7 +24,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"management.endpoints.web.exposure.include=health,info,prometheus", "management.endpoint.prometheus.enabled=true", "management.prometheus.metrics.export.enabled=true"})
+/**
+ * Integration tests verifying Actuator health endpoints, Prometheus scraping, and custom Micrometer business metrics.
+ */
+@SpringBootTest(properties = {
+        "management.endpoints.web.exposure.include=health,info,prometheus",
+        "management.endpoint.prometheus.enabled=true",
+        "management.prometheus.metrics.export.enabled=true"
+})
 @AutoConfigureMockMvc
 class ObservabilityMetricsIntegrationTest {
 
@@ -38,13 +45,17 @@ class ObservabilityMetricsIntegrationTest {
     @Test
     @DisplayName("Actuator health endpoint should return UP status without sensitive details")
     void testHealthEndpointReturnsUp() throws Exception {
-        mockMvc.perform(get("/actuator/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
     }
 
     @Test
     @DisplayName("Actuator Prometheus endpoint should expose metrics in Prometheus exposition format")
     void testPrometheusEndpointExposesMetrics() throws Exception {
-        MvcResult result = mockMvc.perform(get("/actuator/prometheus")).andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String responseBody = result.getResponse().getContentAsString();
         assertThat(responseBody).contains("jvm_memory_used_bytes");
@@ -55,24 +66,54 @@ class ObservabilityMetricsIntegrationTest {
     void testBusinessMetricsRecordedAfterCheckoutAndPayment() throws Exception {
         // 1. Add item to guest cart
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
-        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
+        String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString())
+                .get("cartToken")
+                .asText();
 
         // 2. Perform Checkout -> triggers ecommerce_orders_total
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Metrics Buyer", "metrics@example.com", "Herzl St 50, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Metrics Buyer",
+                "metrics@example.com",
+                "Herzl St 50, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
-        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
+        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString())
+                .get("trackingNumber")
+                .asText();
 
         // 3. Process Approved Payment -> triggers ecommerce_payments_processed_total & latency timer
         String validExpiry = YearMonth.now().plusYears(2).format(EXPIRY_FORMATTER);
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).cardNumber("4111111111111111").cardHolderName("Metrics Buyer").expiryDate(validExpiry).cvv("123").amount(new BigDecimal("6.50")).build();
+        PaymentRequest paymentRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Metrics Buyer")
+                .expiryDate(validExpiry)
+                .cvv("123")
+                .amount(new BigDecimal("6.50"))
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paymentRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
 
         // 4. Verify Prometheus registry contains custom business metrics
-        MvcResult metricsResult = mockMvc.perform(get("/actuator/prometheus")).andExpect(status().isOk()).andReturn();
+        MvcResult metricsResult = mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String prometheusOutput = metricsResult.getResponse().getContentAsString();
 

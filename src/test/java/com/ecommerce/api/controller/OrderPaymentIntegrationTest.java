@@ -38,6 +38,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * End-to-end integration tests covering checkout, payment lifecycle, stock reservation, expiry jobs, and caching.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
@@ -70,9 +73,16 @@ class OrderPaymentIntegrationTest {
     }
 
     private String obtainAdminToken() throws Exception {
-        LoginRequest loginRequest = LoginRequest.builder().email("admin@ecommerce.com").password("Admin@123456").build();
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("admin@ecommerce.com")
+                .password("Admin@123456")
+                .build();
 
-        MvcResult result = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(loginRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
         if (root.has("token")) {
@@ -88,71 +98,148 @@ class OrderPaymentIntegrationTest {
     void testGuestCheckoutAndPaymentFlow() throws Exception {
         // 1. Add product #1 to a fresh guest cart
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.totalItems").value(2)).andExpect(jsonPath("$.cartToken").isString()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(2))
+                .andExpect(jsonPath("$.cartToken").isString())
+                .andReturn();
 
         JsonNode cartNode = objectMapper.readTree(addResult.getResponse().getContentAsString());
         String cartToken = cartNode.get("cartToken").asText();
 
         // 2. Perform Checkout -> Expect HTTP 201 with status PENDING
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Guest Tester", "guest@example.com", "Allenby St 50, Tel Aviv");
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Guest Tester",
+                "guest@example.com",
+                "Allenby St 50, Tel Aviv"
+        );
 
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("PENDING")).andExpect(jsonPath("$.trackingNumber").isString()).andReturn();
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.trackingNumber").isString())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
         // 3. Verify cart was cleared
-        mockMvc.perform(get("/api/cart").header("X-Cart-Token", cartToken)).andExpect(status().isOk()).andExpect(jsonPath("$.totalItems").value(0)).andExpect(jsonPath("$.items").isEmpty());
+        mockMvc.perform(get("/api/cart")
+                        .header("X-Cart-Token", cartToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(0))
+                .andExpect(jsonPath("$.items").isEmpty());
 
         // 4. Charge payment with matching amount -> Expect COMPLETED
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Guest Tester").expiryDate(futureExpiry()).cvv("123").build();
+        PaymentRequest paymentRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Guest Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.transactionId").isString());
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paymentRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.transactionId").isString());
 
         // 5. Verify order status advanced to CONFIRMED
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
     }
 
     @Test
     @DisplayName("Reject CREDIT_CARD payment without required card fields with 400 Bad Request")
     void testCreditCardPaymentWithoutCardDetailsReturns400() throws Exception {
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Missing Card Tester", "missingcard@example.com", "Rothschild 10, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Missing Card Tester",
+                "missingcard@example.com",
+                "Rothschild 10, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
-        PaymentRequest incompleteCardRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).build();
+        PaymentRequest incompleteCardRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(incompleteCardRequest))).andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(incompleteCardRequest)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("Reject card payment with expired expiryDate with 400 Bad Request")
     void testExpiredCreditCardReturns400() throws Exception {
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Expired Card Tester", "expired@example.com", "Rothschild 20, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Expired Card Tester",
+                "expired@example.com",
+                "Rothschild 20, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
         String expiredDate = YearMonth.now().minusMonths(1).format(EXPIRY_FORMATTER);
-        PaymentRequest expiredCardRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Expired Card Tester").expiryDate(expiredDate).cvv("123").build();
+        PaymentRequest expiredCardRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Expired Card Tester")
+                .expiryDate(expiredDate)
+                .cvv("123")
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(expiredCardRequest))).andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(expiredCardRequest)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -162,12 +249,25 @@ class OrderPaymentIntegrationTest {
 
         // 1. Checkout order -> PENDING
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Lifecycle Tester", "sm@example.com", "Herzl St 10, Haifa");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Lifecycle Tester",
+                "sm@example.com",
+                "Herzl St 10, Haifa"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
@@ -175,29 +275,64 @@ class OrderPaymentIntegrationTest {
 
         // 2. Illegal transition: Cannot jump directly from PENDING to SHIPPED -> Expect 409 Conflict
         UpdateOrderStatusRequest illegalJump = new UpdateOrderStatusRequest(OrderStatus.SHIPPED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(illegalJump))).andExpect(status().isConflict());
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(illegalJump)))
+                .andExpect(status().isConflict());
 
         // 3. Business rule guard: Cannot confirm an unpaid PENDING order -> Expect 422
         UpdateOrderStatusRequest unpaidConfirm = new UpdateOrderStatusRequest(OrderStatus.CONFIRMED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(unpaidConfirm))).andExpect(status().is(422));
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(unpaidConfirm)))
+                .andExpect(status().is(422));
 
         // 4. Complete payment -> Order automatically transitions to CONFIRMED
-        PaymentRequest paymentRequest = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Lifecycle Tester").expiryDate(futureExpiry()).cvv("123").build();
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(paymentRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+        PaymentRequest paymentRequest = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Lifecycle Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paymentRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
 
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
 
         // 5. Legal transition: CONFIRMED -> SHIPPED
         UpdateOrderStatusRequest shipRequest = new UpdateOrderStatusRequest(OrderStatus.SHIPPED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(shipRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SHIPPED"));
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SHIPPED"));
 
         // 6. Legal transition: SHIPPED -> DELIVERED (Terminal)
         UpdateOrderStatusRequest deliverRequest = new UpdateOrderStatusRequest(OrderStatus.DELIVERED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(deliverRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DELIVERED"));
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(deliverRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELIVERED"));
 
         // 7. Terminal state guard: Cannot modify an order already in DELIVERED status -> Expect 409 Conflict
         UpdateOrderStatusRequest modifyDelivered = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(modifyDelivered))).andExpect(status().isConflict());
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(modifyDelivered)))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -212,14 +347,29 @@ class OrderPaymentIntegrationTest {
 
         // 1. Checkout 3 units of product #1
         AddToCartRequest addRequest = new AddToCartRequest(1L, 3);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Cancel Tester", "cancel@example.com", "Dizengoff 100, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Cancel Tester",
+                "cancel@example.com",
+                "Dizengoff 100, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
-        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
+        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString())
+                .get("trackingNumber")
+                .asText();
 
         // Verify stock decreased by 3
         entityManager.flush();
@@ -229,7 +379,12 @@ class OrderPaymentIntegrationTest {
 
         // 2. Admin cancels order -> Expect CANCELLED and stock restored
         UpdateOrderStatusRequest cancelRequest = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(cancelRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cancelRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         // 3. Verify stock restored back to initial level
         entityManager.flush();
@@ -248,12 +403,25 @@ class OrderPaymentIntegrationTest {
 
         // 1. Checkout 2 units
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Decline Tester", "decline@example.com", "Rabin Sq 1, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Decline Tester",
+                "decline@example.com",
+                "Rabin Sq 1, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
@@ -266,12 +434,25 @@ class OrderPaymentIntegrationTest {
         assertThat(productAfterCheckout.getStockQuantity()).isEqualTo(initialStock - 2);
 
         // 2. Charge using card ending in 0000 -> Simulates payment decline
-        PaymentRequest declinedPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580000000000000").cardHolderName("Decline Tester").expiryDate(futureExpiry()).cvv("123").build();
+        PaymentRequest declinedPayment = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4580000000000000")
+                .cardHolderName("Decline Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(declinedPayment)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"));
 
         // 3. Verify order status remains PENDING so customer can retry with another card
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"));
 
         // 4. Verify stock remains reserved for the pending order
         entityManager.flush();
@@ -290,26 +471,52 @@ class OrderPaymentIntegrationTest {
 
         // 1. Checkout 2 units
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Max Retry Tester", "maxretry@example.com", "Bialik 5, Ramat Gan");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Max Retry Tester",
+                "maxretry@example.com",
+                "Bialik 5, Ramat Gan"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
-        PaymentRequest declinedPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4580000000000000").cardHolderName("Max Retry Tester").expiryDate(futureExpiry()).cvv("123").build();
+        PaymentRequest declinedPayment = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4580000000000000")
+                .cardHolderName("Max Retry Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
 
         // 2. Fail 5 times
         for (int attempt = 1; attempt <= 5; attempt++) {
-            mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(declinedPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"));
+            mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(declinedPayment)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("FAILED"));
         }
 
         // 3. Order must now be CANCELLED and stock restored
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         entityManager.flush();
         entityManager.clear();
@@ -329,25 +536,43 @@ class OrderPaymentIntegrationTest {
         int initialStock = productBefore.getStockQuantity();
 
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Expiry Tester", "expiry@example.com", "Herzl 99, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Expiry Tester",
+                "expiry@example.com",
+                "Herzl 99, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         long orderId = checkoutNode.get("id").asLong();
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
 
         // Backdate createdAt to 31 minutes ago
-        entityManager.createQuery("UPDATE Order o SET o.createdAt = :expiredAt WHERE o.id = :id").setParameter("expiredAt", LocalDateTime.now().minusMinutes(31)).setParameter("id", orderId).executeUpdate();
+        entityManager.createQuery("UPDATE Order o SET o.createdAt = :expiredAt WHERE o.id = :id")
+                .setParameter("expiredAt", LocalDateTime.now().minusMinutes(31))
+                .setParameter("id", orderId)
+                .executeUpdate();
         entityManager.flush();
         entityManager.clear();
 
         pendingOrderExpiryJob.cancelExpiredPendingOrders();
 
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         entityManager.flush();
         entityManager.clear();
@@ -366,12 +591,25 @@ class OrderPaymentIntegrationTest {
 
         // 1. Add item and checkout
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Paid Cancel Tester", "paidcancel@example.com", "Dizengoff 50, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Paid Cancel Tester",
+                "paidcancel@example.com",
+                "Dizengoff 50, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         long orderId = checkoutNode.get("id").asLong();
@@ -379,13 +617,29 @@ class OrderPaymentIntegrationTest {
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
         // 2. Complete payment -> Order becomes CONFIRMED, Payment becomes COMPLETED
-        PaymentRequest validPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Paid Cancel Tester").expiryDate(futureExpiry()).cvv("123").build();
+        PaymentRequest validPayment = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Paid Cancel Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(validPayment))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validPayment)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
 
         // 3. Admin cancels the paid CONFIRMED order -> Payment becomes REFUNDED and stock is restored
         UpdateOrderStatusRequest cancelRequest = new UpdateOrderStatusRequest(OrderStatus.CANCELLED);
-        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status").header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(cancelRequest))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(patch("/api/orders/" + trackingNumber + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cancelRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         entityManager.flush();
         entityManager.clear();
@@ -397,24 +651,40 @@ class OrderPaymentIntegrationTest {
     @DisplayName("GET /api/products/{id} reflects updated stock immediately after checkout without stale cache")
     void testProductCacheEvictedOnCheckout() throws Exception {
         // 1. Prime the products cache via GET /api/products/1
-        MvcResult initialGet = mockMvc.perform(get("/api/products/1")).andExpect(status().isOk()).andReturn();
+        MvcResult initialGet = mockMvc.perform(get("/api/products/1"))
+                .andExpect(status().isOk())
+                .andReturn();
         int initialStock = objectMapper.readTree(initialGet.getResponse().getContentAsString()).get("stockQuantity").asInt();
 
         // 2. Add 2 units and checkout
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Cache Tester", "cache@example.com", "Allenby 10, Tel Aviv");
-        mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated());
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Cache Tester",
+                "cache@example.com",
+                "Allenby 10, Tel Aviv"
+        );
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated());
 
         // Simulate a separate HTTP request's persistence context while keeping Caffeine L2 cache intact
         entityManager.flush();
         entityManager.clear();
 
         // 3. Immediately query GET /api/products/1 again -> Must reflect decremented stock
-        mockMvc.perform(get("/api/products/1")).andExpect(status().isOk()).andExpect(jsonPath("$.stockQuantity").value(initialStock - 2));
+        mockMvc.perform(get("/api/products/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockQuantity").value(initialStock - 2));
     }
 
     @Test
@@ -425,26 +695,51 @@ class OrderPaymentIntegrationTest {
         int initialStock = productRepository.findById(1L).orElseThrow().getStockQuantity();
 
         AddToCartRequest addRequest = new AddToCartRequest(1L, 1);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Skip Expiry Tester", "skipexpiry@example.com", "Allenby 20, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Skip Expiry Tester",
+                "skipexpiry@example.com",
+                "Allenby 20, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
         JsonNode checkoutNode = objectMapper.readTree(checkoutResult.getResponse().getContentAsString());
         long orderId = checkoutNode.get("id").asLong();
         String trackingNumber = checkoutNode.get("trackingNumber").asText();
         BigDecimal totalAmount = new BigDecimal(checkoutNode.get("totalAmount").asText());
 
-        PaymentRequest validPayment = PaymentRequest.builder().paymentMethod(PaymentMethod.CREDIT_CARD).amount(totalAmount).cardNumber("4111111111111111").cardHolderName("Skip Expiry Tester").expiryDate(futureExpiry()).cvv("123").build();
+        PaymentRequest validPayment = PaymentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD)
+                .amount(totalAmount)
+                .cardNumber("4111111111111111")
+                .cardHolderName("Skip Expiry Tester")
+                .expiryDate(futureExpiry())
+                .cvv("123")
+                .build();
 
-        mockMvc.perform(post("/api/payments/orders/" + trackingNumber).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(validPayment))).andExpect(status().isOk());
+        mockMvc.perform(post("/api/payments/orders/" + trackingNumber)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validPayment)))
+                .andExpect(status().isOk());
 
         boolean cancelled = orderService.cancelIfPending(trackingNumber);
         assertThat(cancelled).isFalse();
 
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
 
         entityManager.flush();
         entityManager.clear();
@@ -460,19 +755,36 @@ class OrderPaymentIntegrationTest {
         int initialStock = productRepository.findById(1L).orElseThrow().getStockQuantity();
 
         AddToCartRequest addRequest = new AddToCartRequest(1L, 2);
-        MvcResult addResult = mockMvc.perform(post("/api/cart/items").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(addRequest))).andExpect(status().isOk()).andReturn();
+        MvcResult addResult = mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
 
         String cartToken = objectMapper.readTree(addResult.getResponse().getContentAsString()).get("cartToken").asText();
 
-        CheckoutRequest checkoutRequest = new CheckoutRequest("Cancel Pending Tester", "cancelpending@example.com", "Allenby 30, Tel Aviv");
-        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout").header("X-Cart-Token", cartToken).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(checkoutRequest))).andExpect(status().isCreated()).andReturn();
+        CheckoutRequest checkoutRequest = new CheckoutRequest(
+                "Cancel Pending Tester",
+                "cancelpending@example.com",
+                "Allenby 30, Tel Aviv"
+        );
+        MvcResult checkoutResult = mockMvc.perform(post("/api/orders/checkout")
+                        .header("X-Cart-Token", cartToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
 
-        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString()).get("trackingNumber").asText();
+        String trackingNumber = objectMapper.readTree(checkoutResult.getResponse().getContentAsString())
+                .get("trackingNumber")
+                .asText();
 
         boolean cancelled = orderService.cancelIfPending(trackingNumber);
         assertThat(cancelled).isTrue();
 
-        mockMvc.perform(get("/api/orders/" + trackingNumber)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(get("/api/orders/" + trackingNumber))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         entityManager.flush();
         entityManager.clear();

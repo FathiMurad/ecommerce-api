@@ -22,6 +22,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Integration tests verifying IP and account-based rate limiting, spoofing protection, and endpoint isolation.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class RateLimitingIntegrationTest {
@@ -52,12 +55,33 @@ class RateLimitingIntegrationTest {
         String testIp = "198.51.100.1";
 
         for (int i = 0; i < 20; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email("rate.ip." + i + "@example.com").password("InvalidPass123").build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email("rate.ip." + i + "@example.com")
+                    .password("InvalidPass123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(testIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest blockedRequest = LoginRequest.builder().email("rate.ip.20@example.com").password("InvalidPass123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(blockedRequest))).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429)).andExpect(jsonPath("$.error").value("Too Many Requests")).andExpect(jsonPath("$.message").value(containsString("Rate limit exceeded"))).andExpect(jsonPath("$.timestamp").isString());
+        LoginRequest blockedRequest = LoginRequest.builder()
+                .email("rate.ip.20@example.com")
+                .password("InvalidPass123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(blockedRequest)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.error").value("Too Many Requests"))
+                .andExpect(jsonPath("$.message").value(containsString("Rate limit exceeded")))
+                .andExpect(jsonPath("$.timestamp").isString());
     }
 
     @Test
@@ -66,12 +90,30 @@ class RateLimitingIntegrationTest {
         String realClientIp = "198.51.100.10";
 
         for (int i = 0; i < 20; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email("spoof.test." + i + "@example.com").password("InvalidPass123").build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(realClientIp)).header("X-Forwarded-For", "203.0.113." + i).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email("spoof.test." + i + "@example.com")
+                    .password("InvalidPass123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(realClientIp))
+                            .header("X-Forwarded-For", "203.0.113." + i)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest blockedRequest = LoginRequest.builder().email("spoof.test.20@example.com").password("InvalidPass123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(realClientIp)).header("X-Forwarded-For", "203.0.113.250").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(blockedRequest))).andExpect(status().isTooManyRequests());
+        LoginRequest blockedRequest = LoginRequest.builder()
+                .email("spoof.test.20@example.com")
+                .password("InvalidPass123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(realClientIp))
+                        .header("X-Forwarded-For", "203.0.113.250")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(blockedRequest)))
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test
@@ -81,12 +123,30 @@ class RateLimitingIntegrationTest {
         String clientIp = "198.51.100.50";
 
         for (int i = 0; i < 5; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email(targetEmail).password("WrongPass" + i).build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(clientIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email(targetEmail)
+                    .password("WrongPass" + i)
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(clientIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest lockedRequest = LoginRequest.builder().email("VICTIM@Example.COM").password("AnyPassword123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(clientIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(lockedRequest))).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429));
+        LoginRequest lockedRequest = LoginRequest.builder()
+                .email("VICTIM@Example.COM")
+                .password("AnyPassword123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(clientIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(lockedRequest)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.status").value(429));
     }
 
     @Test
@@ -97,15 +157,37 @@ class RateLimitingIntegrationTest {
         String victimIp = "198.51.100.80";
 
         for (int i = 0; i < 5; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email(targetEmail).password("WrongPass" + i).build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(attackerIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email(targetEmail)
+                    .password("WrongPass" + i)
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(attackerIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest attackerRetry = LoginRequest.builder().email(targetEmail).password("AnyPassword123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(attackerIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(attackerRetry))).andExpect(status().isTooManyRequests());
+        LoginRequest attackerRetry = LoginRequest.builder()
+                .email(targetEmail)
+                .password("AnyPassword123")
+                .build();
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(attackerIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(attackerRetry)))
+                .andExpect(status().isTooManyRequests());
 
-        LoginRequest victimRequest = LoginRequest.builder().email(targetEmail).password("AnyPassword123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(victimIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(victimRequest))).andExpect(status().isUnauthorized());
+        LoginRequest victimRequest = LoginRequest.builder()
+                .email(targetEmail)
+                .password("AnyPassword123")
+                .build();
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(victimIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(victimRequest)))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -115,15 +197,35 @@ class RateLimitingIntegrationTest {
         String freshIp = "198.51.100.3";
 
         for (int i = 0; i < 20; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email("iso.test." + i + "@example.com").password("InvalidPass123").build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(blockedIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email("iso.test." + i + "@example.com")
+                    .password("InvalidPass123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(blockedIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest extraRequest = LoginRequest.builder().email("iso.extra@example.com").password("InvalidPass123").build();
+        LoginRequest extraRequest = LoginRequest.builder()
+                .email("iso.extra@example.com")
+                .password("InvalidPass123")
+                .build();
         String payload = objectMapper.writeValueAsString(extraRequest);
 
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(blockedIp)).contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isTooManyRequests());
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(freshIp)).contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(blockedIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(freshIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -132,13 +234,32 @@ class RateLimitingIntegrationTest {
         String testIp = "198.51.100.4";
 
         for (int i = 0; i < 20; i++) {
-            LoginRequest badRequest = LoginRequest.builder().email("pub.test." + i + "@example.com").password("InvalidPass123").build();
-            mockMvc.perform(post("/api/auth/login").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(badRequest))).andExpect(status().isUnauthorized());
+            LoginRequest badRequest = LoginRequest.builder()
+                    .email("pub.test." + i + "@example.com")
+                    .password("InvalidPass123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/login")
+                            .with(remoteIp(testIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
         }
 
-        LoginRequest extraRequest = LoginRequest.builder().email("pub.extra@example.com").password("InvalidPass123").build();
-        mockMvc.perform(post("/api/auth/login").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(extraRequest))).andExpect(status().isTooManyRequests());
-        mockMvc.perform(get("/api/products").with(remoteIp(testIp))).andExpect(status().isOk());
+        LoginRequest extraRequest = LoginRequest.builder()
+                .email("pub.extra@example.com")
+                .password("InvalidPass123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(extraRequest)))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(get("/api/products")
+                        .with(remoteIp(testIp)))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -147,10 +268,21 @@ class RateLimitingIntegrationTest {
         String testIp = "198.51.100.5";
 
         for (int i = 0; i < 20; i++) {
-            mockMvc.perform(post("/api/orders/checkout").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
+            mockMvc.perform(post("/api/orders/checkout")
+                            .with(remoteIp(testIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(status().isBadRequest());
         }
 
-        mockMvc.perform(post("/api/orders/checkout").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429)).andExpect(jsonPath("$.error").value("Too Many Requests"));
+        mockMvc.perform(post("/api/orders/checkout")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.error").value("Too Many Requests"));
     }
 
     @Test
@@ -159,10 +291,20 @@ class RateLimitingIntegrationTest {
         String testIp = "198.51.100.6";
 
         for (int i = 0; i < 20; i++) {
-            mockMvc.perform(post("/api/payments/orders/ORD-NONEXISTENT").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
+            mockMvc.perform(post("/api/payments/orders/ORD-NONEXISTENT")
+                            .with(remoteIp(testIp))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(status().isBadRequest());
         }
 
-        mockMvc.perform(post("/api/payments/orders/ORD-NONEXISTENT").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429));
+        mockMvc.perform(post("/api/payments/orders/ORD-NONEXISTENT")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.status").value(429));
     }
 
     @Test
@@ -171,13 +313,35 @@ class RateLimitingIntegrationTest {
         String testIp = "198.51.100.7";
 
         for (int i = 0; i < 60; i++) {
-            mockMvc.perform(get("/api/cart").with(remoteIp(testIp))).andExpect(status().isOk());
+            mockMvc.perform(get("/api/cart")
+                            .with(remoteIp(testIp)))
+                    .andExpect(status().isOk());
         }
 
-        mockMvc.perform(get("/api/cart").with(remoteIp(testIp))).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After")).andExpect(jsonPath("$.status").value(429));
-        mockMvc.perform(post("/api/cart/items").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isTooManyRequests());
-        mockMvc.perform(put("/api/cart/items/1").with(remoteIp(testIp)).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isTooManyRequests());
-        mockMvc.perform(delete("/api/cart/items/1").with(remoteIp(testIp))).andExpect(status().isTooManyRequests());
-        mockMvc.perform(delete("/api/cart").with(remoteIp(testIp))).andExpect(status().isTooManyRequests());
+        mockMvc.perform(get("/api/cart")
+                        .with(remoteIp(testIp)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.status").value(429));
+
+        mockMvc.perform(post("/api/cart/items")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(put("/api/cart/items/1")
+                        .with(remoteIp(testIp))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(delete("/api/cart/items/1")
+                        .with(remoteIp(testIp)))
+                .andExpect(status().isTooManyRequests());
+
+        mockMvc.perform(delete("/api/cart")
+                        .with(remoteIp(testIp)))
+                .andExpect(status().isTooManyRequests());
     }
 }
