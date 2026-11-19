@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 /**
- * Repository for user accounts and authentication lookups.
+ * Spring Data JPA repository for managing {@link User} entities and authentication lookups.
  */
 public interface UserRepository extends JpaRepository<User, Long> {
 

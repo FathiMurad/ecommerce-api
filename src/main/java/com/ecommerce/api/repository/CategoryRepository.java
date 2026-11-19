@@ -5,7 +5,7 @@ import com.ecommerce.api.exception.ResourceNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
- * Repository for managing categories in the database.
+ * Spring Data JPA repository for managing {@link Category} entities and validating category uniqueness.
  */
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 

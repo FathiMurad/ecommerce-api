@@ -13,12 +13,12 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
- * Repository for managing customer orders and history.
+ * Spring Data JPA repository for managing {@link Order} entities, tracking lookups, and customer order history.
  */
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     /**
-     * Loads an order with its items and products in one query to avoid N+1 issues.
+     * Loads an order with its items and products in a single query to avoid N+1 issues.
      */
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.trackingNumber = :trackingNumber")
     Optional<Order> findByTrackingNumberWithItems(@Param("trackingNumber") String trackingNumber);
@@ -30,6 +30,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff, Pageable pageable);
 
     default Order getByTrackingNumberOrThrow(String trackingNumber) {
-        return findByTrackingNumberWithItems(trackingNumber).orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
+        return findByTrackingNumberWithItems(trackingNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with tracking number: " + trackingNumber));
     }
 }

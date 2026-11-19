@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 /**
- * Repository for tracking payment transactions.
+ * Spring Data JPA repository for managing {@link Payment} entities and querying order transaction status.
  */
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 

@@ -14,7 +14,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 /**
- * Repository for products, handling atomic stock updates and catalog queries.
+ * Spring Data JPA repository for managing {@link Product} entities, catalog queries, and atomic stock updates.
  */
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
@@ -29,7 +29,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsByCategoryId(Long categoryId);
 
     /**
-     * Loads a product with its images in one query to avoid N+1 issues.
+     * Loads a product with its images in a single query to avoid N+1 issues.
      */
     @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.images WHERE p.id = :id")
     Optional<Product> findByIdWithImages(@Param("id") Long id);
@@ -39,14 +39,14 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * Deliberately omits clearAutomatically so active Cart entities remain managed.
      */
     @Modifying(flushAutomatically = true)
-    @Query("update Product p set p.stockQuantity = p.stockQuantity - :qty, p.version = p.version + 1 where p.id = :id and p.stockQuantity >= :qty")
+    @Query("UPDATE Product p SET p.stockQuantity = p.stockQuantity - :qty, p.version = p.version + 1 WHERE p.id = :id AND p.stockQuantity >= :qty")
     int tryDecrementStock(@Param("id") Long id, @Param("qty") int qty);
 
     /**
      * Atomically restores stock when an order is cancelled.
      */
     @Modifying(flushAutomatically = true)
-    @Query("update Product p set p.stockQuantity = p.stockQuantity + :qty, p.version = p.version + 1 where p.id = :id")
+    @Query("UPDATE Product p SET p.stockQuantity = p.stockQuantity + :qty, p.version = p.version + 1 WHERE p.id = :id")
     int incrementStock(@Param("id") Long id, @Param("qty") int qty);
 
     default Product getOrThrow(Long id) {
