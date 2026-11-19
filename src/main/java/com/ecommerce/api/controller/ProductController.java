@@ -31,8 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller exposing endpoints for product catalog operations,
- * supporting paginated browsing, category filtering, and administrative management.
+ * REST controller for managing catalog products, supporting paginated browsing, category filtering, and administrative CRUD operations.
  */
 @RestController
 @RequestMapping("/api/products")

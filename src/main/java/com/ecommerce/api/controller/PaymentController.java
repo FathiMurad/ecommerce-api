@@ -23,8 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller handling customer payment operations and transaction settlement
- * for both registered customer orders and guest checkouts.
+ * REST controller for processing order payments and transaction settlement for registered users and guest checkouts.
  */
 @RestController
 @RequestMapping("/api/payments")

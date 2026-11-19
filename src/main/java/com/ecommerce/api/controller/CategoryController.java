@@ -29,8 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * REST controller exposing endpoints for category catalog operations,
- * supporting public catalog browsing and administrative category management.
+ * REST controller for managing catalog categories, supporting public browsing and administrative CRUD operations.
  */
 @RestController
 @RequestMapping("/api/categories")

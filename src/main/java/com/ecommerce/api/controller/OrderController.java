@@ -35,8 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller exposing endpoints for order placement, lifecycle management, and history.
- * Supports authenticated customers, anonymous guest checkouts, and administrative management.
+ * REST controller for managing order checkout, tracking, status transitions, and customer order history.
  */
 @RestController
 @RequestMapping("/api/orders")

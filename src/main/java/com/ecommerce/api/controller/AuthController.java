@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller for managing user authentication and registration workflows.
+ * REST controller for managing user registration and JWT authentication workflows.
  */
 @RestController
 @RequestMapping("/api/auth")

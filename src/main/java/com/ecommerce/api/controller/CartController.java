@@ -28,8 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller exposing endpoints for shopping cart operations,
- * supporting both authenticated users via JWT and anonymous guest sessions via X-Cart-Token header.
+ * REST controller for managing shopping cart operations for authenticated users and guest sessions.
  */
 @RestController
 @RequestMapping("/api/cart")
