@@ -12,8 +12,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
 /**
- * Daily maintenance job that removes abandoned anonymous guest carts
- * inactive for more than 30 days using JPA entity deletion to preserve cascade cleanup.
+ * Periodically removes abandoned anonymous guest carts inactive beyond the retention threshold.
  */
 @Slf4j
 @Component
@@ -35,6 +34,7 @@ public class GuestCartCleanupJob {
             if (expiredBatch.isEmpty()) {
                 break;
             }
+            // Use entity deletion rather than bulk JPQL delete to trigger JPA cascade removal of cart items
             cartRepository.deleteAll(expiredBatch.getContent());
             deletedCount += expiredBatch.getNumberOfElements();
         }

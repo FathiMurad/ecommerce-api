@@ -14,8 +14,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
 /**
- * Periodically cancels stale PENDING orders older than 30 minutes
- * so reserved product inventory is released back to the catalog.
+ * Periodically cancels stale pending orders to release reserved product inventory back to the catalog.
  */
 @Slf4j
 @Component
@@ -28,10 +27,17 @@ public class PendingOrderExpiryJob {
     private final OrderRepository orderRepository;
     private final OrderService orderService;
 
-    @Scheduled(initialDelayString = "${app.scheduler.pending-order-expiry.initial-delay:PT1M}", fixedDelayString = "${app.scheduler.pending-order-expiry.fixed-delay:PT5M}")
+    @Scheduled(
+            initialDelayString = "${app.scheduler.pending-order-expiry.initial-delay:PT1M}",
+            fixedDelayString = "${app.scheduler.pending-order-expiry.fixed-delay:PT5M}"
+    )
     public void cancelExpiredPendingOrders() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(EXPIRY_MINUTES);
-        Page<Order> expiredPage = orderRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff, PageRequest.of(0, BATCH_SIZE));
+        Page<Order> expiredPage = orderRepository.findByStatusAndCreatedAtBefore(
+                OrderStatus.PENDING,
+                cutoff,
+                PageRequest.of(0, BATCH_SIZE)
+        );
 
         int cancelledCount = 0;
         for (Order order : expiredPage.getContent()) {
