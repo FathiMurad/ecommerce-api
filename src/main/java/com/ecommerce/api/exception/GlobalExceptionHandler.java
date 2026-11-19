@@ -32,6 +32,9 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Translates application and framework exceptions into standardized {@link ErrorResponse} HTTP payloads.
+ */
 @Slf4j
 @SuppressWarnings("unused")
 @RestControllerAdvice
@@ -100,7 +103,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({MissingServletRequestParameterException.class, MissingRequestHeaderException.class, InvalidDataAccessApiUsageException.class})
     public ResponseEntity<ErrorResponse> handleBadRequestParams(Exception ex) {
         log.warn("Invalid request parameters or sorting arguments: {}", ex.getMessage());
-        String clientMessage = (ex instanceof InvalidDataAccessApiUsageException) ? "Invalid sort parameter or query field specified." : "Required request parameter or header is missing.";
+        String clientMessage = (ex instanceof InvalidDataAccessApiUsageException)
+                ? "Invalid sort parameter or query field specified."
+                : "Required request parameter or header is missing.";
         return buildResponse(HttpStatus.BAD_REQUEST, clientMessage);
     }
 
@@ -111,7 +116,13 @@ public class GlobalExceptionHandler {
             fieldErrors.put(error.getField(), error.getDefaultMessage());
         }
 
-        ErrorResponse errorResponse = ErrorResponse.builder().status(HttpStatus.BAD_REQUEST.value()).error(HttpStatus.BAD_REQUEST.getReasonPhrase()).message("Input validation failed for one or more fields.").timestamp(LocalDateTime.now()).validationErrors(fieldErrors).build();
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message("Input validation failed for one or more fields.")
+                .timestamp(LocalDateTime.now())
+                .validationErrors(fieldErrors)
+                .build();
 
         log.warn("Validation failed: {}", fieldErrors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
@@ -121,16 +132,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
         log.warn("Malformed HTTP request body: {}", ex.getMessage());
 
-        // אם מקור החריגה הוא IllegalArgumentException (למשל מ-Enum שקיבל ערך לא תקין), נחשוף את ההודעה המדויקת
+        // Expose custom enum or factory validation messages when wrapped by Jackson deserialization
         Throwable rootCause = ex.getMostSpecificCause();
-        String message = (rootCause instanceof IllegalArgumentException) ? rootCause.getMessage() : "Malformed JSON request body or invalid field format.";
+        String message = (rootCause instanceof IllegalArgumentException)
+                ? rootCause.getMessage()
+                : "Malformed JSON request body or invalid field format.";
 
         return buildResponse(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
-        String message = String.format("Parameter '%s' should be of type '%s'", ex.getName(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
+        String message = String.format(
+                "Parameter '%s' should be of type '%s'",
+                ex.getName(),
+                ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown"
+        );
         log.warn("Type mismatch: {}", message);
         return buildResponse(HttpStatus.BAD_REQUEST, message);
     }
@@ -164,6 +181,7 @@ public class GlobalExceptionHandler {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean isAnonymous = auth == null || auth instanceof AnonymousAuthenticationToken || !auth.isAuthenticated();
 
+        // Distinguish unauthenticated users (401) from authenticated users lacking permissions (403)
         if (isAnonymous) {
             log.warn("Unauthenticated access attempt intercepted: {}", ex.getMessage());
             return buildResponse(HttpStatus.UNAUTHORIZED, "Full authentication is required to access this resource.");
@@ -173,21 +191,33 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.FORBIDDEN, "Access denied: You do not possess the required permissions.");
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimitExceededException(RateLimitExceededException ex) {
+        log.warn("Rate limit exceeded: {}", ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                .error(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase())
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(errorResponse);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
         log.error("Unhandled internal server exception", ex);
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected internal server error occurred. Please contact support.");
     }
 
-    @ExceptionHandler(RateLimitExceededException.class)
-    public ResponseEntity<ErrorResponse> handleRateLimitExceededException(RateLimitExceededException ex) {
-        log.warn("Rate limit exceeded: {}", ex.getMessage());
-        ErrorResponse errorResponse = ErrorResponse.builder().status(HttpStatus.TOO_MANY_REQUESTS.value()).error(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase()).message(ex.getMessage()).timestamp(LocalDateTime.now()).build();
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", String.valueOf(ex.getRetryAfterSeconds())).body(errorResponse);
-    }
-
     private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status, String message) {
-        ErrorResponse errorResponse = ErrorResponse.builder().status(status.value()).error(status.getReasonPhrase()).message(message).timestamp(LocalDateTime.now()).build();
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(message)
+                .timestamp(LocalDateTime.now())
+                .build();
         return ResponseEntity.status(status).body(errorResponse);
     }
 }

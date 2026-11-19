@@ -1,7 +1,7 @@
 package com.ecommerce.api.exception;
 
 /**
- * Thrown when an order checkout is attempted on an empty shopping cart.
+ * Thrown when checkout is attempted on an empty shopping cart, resulting in HTTP 400 Bad Request.
  */
 public class EmptyCartException extends RuntimeException {
 
