@@ -10,8 +10,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Utility to write clean, strongly-typed JSON error responses directly to the HttpServletResponse,
- * completely avoiding ObjectMapper serialization discrepancies or missing Jackson modules.
+ * Writes uniform JSON error responses directly to {@link HttpServletResponse} within servlet filters and security handlers.
  */
 public final class JsonErrorWriter {
 
@@ -23,7 +22,16 @@ public final class JsonErrorWriter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
-        String json = String.format("{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\",\"timestamp\":\"%s\"}", status.value(), status.getReasonPhrase(), message, LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("\"", "\\\"");
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+
+        String json = String.format(
+                "{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\",\"timestamp\":\"%s\"}",
+                status.value(),
+                status.getReasonPhrase(),
+                safeMessage,
+                timestamp
+        );
 
         response.getWriter().write(json);
     }

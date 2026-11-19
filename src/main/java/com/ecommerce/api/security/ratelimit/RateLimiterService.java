@@ -11,8 +11,8 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Service managing bounded Caffeine token-bucket instances per client IP and endpoint type,
- * as well as per-email/IP failed login lockouts to mitigate account enumeration/DoS.
+ * Manages bounded token buckets per client IP and endpoint type,
+ * along with per-email/IP failed login lockouts against brute-force attempts.
  */
 @Slf4j
 @Service
@@ -20,13 +20,22 @@ public class RateLimiterService {
 
     private static final int MAX_LOGIN_FAILURES_PER_EMAIL_IP = 5;
     private static final Duration EMAIL_IP_LOCKOUT_DURATION = Duration.ofMinutes(15);
+    private static final Duration BUCKET_IDLE_EXPIRATION = Duration.ofMinutes(10);
+    private static final long MAX_CACHE_ENTRIES = 50_000L;
+    private static final long DISABLED_REMAINING_TOKENS = 100L;
 
     private record LoginFailureState(int failures, Instant lockedUntil) {
     }
 
-    private final Cache<String, TokenBucket> buckets = Caffeine.newBuilder().expireAfterAccess(Duration.ofMinutes(10)).maximumSize(50_000).build();
+    private final Cache<String, TokenBucket> buckets = Caffeine.newBuilder()
+            .expireAfterAccess(BUCKET_IDLE_EXPIRATION)
+            .maximumSize(MAX_CACHE_ENTRIES)
+            .build();
 
-    private final Cache<String, LoginFailureState> loginFailuresByEmailIp = Caffeine.newBuilder().expireAfterWrite(EMAIL_IP_LOCKOUT_DURATION).maximumSize(50_000).build();
+    private final Cache<String, LoginFailureState> loginFailuresByEmailIp = Caffeine.newBuilder()
+            .expireAfterWrite(EMAIL_IP_LOCKOUT_DURATION)
+            .maximumSize(MAX_CACHE_ENTRIES)
+            .build();
 
     @Value("${app.security.rate-limit.enabled:true}")
     private boolean enabled;
@@ -57,7 +66,7 @@ public class RateLimiterService {
 
     public RateLimitResult tryAcquire(String clientIp, RateLimitType type) {
         if (!enabled) {
-            return RateLimitResult.allowed(100);
+            return RateLimitResult.allowed(DISABLED_REMAINING_TOKENS);
         }
 
         String bucketKey = type.name() + ":" + clientIp;
@@ -82,8 +91,17 @@ public class RateLimiterService {
         if (state != null && state.lockedUntil() != null) {
             long secondsRemaining = Duration.between(Instant.now(), state.lockedUntil()).getSeconds();
             if (secondsRemaining > 0) {
-                log.warn("Login blocked by email/IP lockout policy for email={} from IP={}. Retry-After: {}s", normalizedEmail, clientIp, secondsRemaining);
-                throw new RateLimitExceededException("Rate limit exceeded due to repeated failed login attempts. Please retry after " + secondsRemaining + " seconds.", secondsRemaining);
+                log.warn(
+                        "Login blocked by email/IP lockout policy for email={} from IP={}. Retry-After: {}s",
+                        normalizedEmail,
+                        clientIp,
+                        secondsRemaining
+                );
+                throw new RateLimitExceededException(
+                        "Rate limit exceeded due to repeated failed login attempts. Please retry after "
+                                + secondsRemaining + " seconds.",
+                        secondsRemaining
+                );
             }
             loginFailuresByEmailIp.invalidate(stateKey);
         }
@@ -95,13 +113,18 @@ public class RateLimiterService {
         }
 
         String stateKey = normalizedEmail + ":" + clientIp;
+        // Atomic compute ensures thread-safe counter increments under concurrent login attempts
         loginFailuresByEmailIp.asMap().compute(stateKey, (key, existing) -> {
             Instant now = Instant.now();
             if (existing == null || (existing.lockedUntil() != null && !now.isBefore(existing.lockedUntil()))) {
                 return new LoginFailureState(1, null);
             }
+
             int count = existing.failures() + 1;
-            Instant lockUntil = count >= MAX_LOGIN_FAILURES_PER_EMAIL_IP ? (existing.lockedUntil() != null ? existing.lockedUntil() : now.plus(EMAIL_IP_LOCKOUT_DURATION)) : null;
+            Instant lockUntil = null;
+            if (count >= MAX_LOGIN_FAILURES_PER_EMAIL_IP) {
+                lockUntil = existing.lockedUntil() != null ? existing.lockedUntil() : now.plus(EMAIL_IP_LOCKOUT_DURATION);
+            }
             return new LoginFailureState(count, lockUntil);
         });
     }

@@ -7,25 +7,24 @@ import com.ecommerce.api.exception.ResourceNotFoundException;
 import org.springframework.stereotype.Component;
 
 /**
- * Enforces resource ownership boundaries on orders to prevent IDOR attacks.
- * <p>
- * Guest orders are identified solely by their secure tracking number.
- * Registered user orders can only be accessed by the owner or system administrators.
- * Returns 404 (ResourceNotFoundException) instead of 403 to avoid existence oracle leaks.
+ * Enforces ownership access rules on orders to prevent IDOR vulnerabilities.
  */
 @Component
 public class OrderAccessPolicy {
 
     public void assertCanAccess(Order order, User viewer) {
+        // Guest orders have no associated user and rely on the tracking number as a bearer secret
         if (order.getUser() == null) {
-            // Guest order: tracking number is the bearer secret
             return;
         }
 
-        boolean isOwner = viewer != null && viewer.getId() != null && viewer.getId().equals(order.getUser().getId());
+        boolean isOwner = viewer != null
+                && viewer.getId() != null
+                && viewer.getId().equals(order.getUser().getId());
         boolean isAdmin = viewer != null && viewer.getRole() == Role.ROLE_ADMIN;
 
         if (!isOwner && !isAdmin) {
+            // Return 404 instead of 403 to prevent leaking whether a tracking number exists
             throw new ResourceNotFoundException("Order not found with tracking number: " + order.getTrackingNumber());
         }
     }

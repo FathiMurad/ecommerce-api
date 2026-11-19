@@ -1,7 +1,9 @@
 package com.ecommerce.api.security;
 
+import com.ecommerce.api.entity.User;
 import com.ecommerce.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -9,10 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
+import java.util.Optional;
 
 /**
- * Enterprise service loading user details during authentication and security filter processing.
- * Enforces email normalization and read-only transactional execution.
+ * Loads user details by normalized email address for Spring Security authentication.
  */
 @Service
 @RequiredArgsConstructor
@@ -22,13 +24,18 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        if (email == null || email.isBlank()) {
+    public @NonNull UserDetails loadUserByUsername(@NonNull String email) throws UsernameNotFoundException {
+        if (email.isBlank()) {
             throw new UsernameNotFoundException("Authentication failed: Email address cannot be empty.");
         }
 
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
 
-        return userRepository.findByEmail(normalizedEmail).map(SecurityUser::new).orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + normalizedEmail));
+        Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
+        if (userOptional.isEmpty()) {
+            throw new UsernameNotFoundException("User not found with email: " + normalizedEmail);
+        }
+
+        return new SecurityUser(userOptional.get());
     }
 }

@@ -17,8 +17,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Service responsible for generating, signing, parsing, and validating JSON Web Tokens (JWT).
- * Utilizes cached cryptographic keys and single-pass claim resolution for enterprise performance.
+ * Generates, signs, parses, and validates HMAC-SHA256 JSON Web Tokens (JWT).
  */
 @Slf4j
 @Service
@@ -32,63 +31,63 @@ public class JwtService {
 
     private volatile SecretKey cachedSigningKey;
 
-    /**
-     * Generates a signed JWT token containing standard claims for the given user.
-     */
     public String generateToken(UserDetails userDetails) {
         return generateToken(new HashMap<>(), userDetails);
     }
 
-    /**
-     * Generates a signed JWT token containing custom claims and user subject.
-     */
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
         long currentTimeMillis = System.currentTimeMillis();
+        Date issuedAt = new Date(currentTimeMillis);
+        Date expiration = new Date(currentTimeMillis + jwtExpiration);
 
-        return Jwts.builder().claims(extraClaims).subject(userDetails.getUsername()).issuedAt(new Date(currentTimeMillis)).expiration(new Date(currentTimeMillis + jwtExpiration)).signWith(getSigningKey(), Jwts.SIG.HS256).compact();
+        return Jwts.builder()
+                .claims(extraClaims)
+                .subject(userDetails.getUsername())
+                .issuedAt(issuedAt)
+                .expiration(expiration)
+                .signWith(getSigningKey(), Jwts.SIG.HS256)
+                .compact();
     }
 
-    /**
-     * Extracts the subject (username/email) from the token.
-     */
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
-    /**
-     * Extracts a specific claim from the token payload using a resolver function.
-     */
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
     }
 
-    /**
-     * Resiliently validates token claims against user details in a single cryptographic pass.
-     */
     public boolean isTokenValid(String token, UserDetails userDetails) {
+        if (userDetails == null) {
+            return false;
+        }
+
         try {
+            // Single cryptographic pass to verify signature and inspect all required claims
             final Claims claims = extractAllClaims(token);
             final String username = claims.getSubject();
             final Date expiration = claims.getExpiration();
 
-            return username != null && userDetails != null && username.equalsIgnoreCase(userDetails.getUsername().trim()) && expiration != null && expiration.after(new Date());
+            boolean isUsernameMatching = username != null
+                    && username.equalsIgnoreCase(userDetails.getUsername().trim());
+            boolean isNotExpired = expiration != null && expiration.after(new Date());
+
+            return isUsernameMatching && isNotExpired;
         } catch (JwtException | IllegalArgumentException ex) {
             log.debug("JWT verification failed: {}", ex.getMessage());
             return false;
         }
     }
 
-    /**
-     * Extracts all payload claims from a signed JWT.
-     */
     public Claims extractAllClaims(String token) {
-        return Jwts.parser().verifyWith(getSigningKey()).build().parseSignedClaims(token).getPayload();
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
-    /**
-     * Returns the cached HMAC-SHA signing key, decoding it lazily thread-safely once.
-     */
     private SecretKey getSigningKey() {
         if (cachedSigningKey == null) {
             synchronized (this) {

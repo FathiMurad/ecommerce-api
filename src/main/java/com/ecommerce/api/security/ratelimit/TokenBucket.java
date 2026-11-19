@@ -1,9 +1,11 @@
 package com.ecommerce.api.security.ratelimit;
 
 /**
- * Thread-safe Token Bucket implementation for rate limiting.
+ * Thread-safe token bucket implementation for rate limiting requests over time.
  */
 public class TokenBucket {
+
+    private static final double NANOS_PER_SECOND = 1_000_000_000.0;
 
     private final long capacity;
     private final double refillTokensPerSecond;
@@ -44,7 +46,7 @@ public class TokenBucket {
         long now = System.nanoTime();
         long elapsedNanos = now - lastRefillTimestampNanos;
         if (elapsedNanos > 0) {
-            double tokensToAdd = (elapsedNanos / 1_000_000_000.0) * refillTokensPerSecond;
+            double tokensToAdd = (elapsedNanos / NANOS_PER_SECOND) * refillTokensPerSecond;
             availableTokens = Math.min(capacity, availableTokens + tokensToAdd);
             lastRefillTimestampNanos = now;
         }

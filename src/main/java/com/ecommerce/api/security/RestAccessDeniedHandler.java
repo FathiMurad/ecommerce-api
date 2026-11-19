@@ -10,11 +10,23 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * Returns a standardized HTTP 403 JSON response when an authenticated user
+ * lacks permission to access a restricted endpoint.
+ */
 @Component
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
 
     @Override
-    public void handle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull AccessDeniedException accessDeniedException) throws IOException {
-        JsonErrorWriter.write(response, HttpStatus.FORBIDDEN, "Access denied: You do not possess the required permissions.");
+    public void handle(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull AccessDeniedException accessDeniedException
+    ) throws IOException {
+        JsonErrorWriter.write(
+                response,
+                HttpStatus.FORBIDDEN,
+                "Access denied: You do not possess the required permissions."
+        );
     }
 }

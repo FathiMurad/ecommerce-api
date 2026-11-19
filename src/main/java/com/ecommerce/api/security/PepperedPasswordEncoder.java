@@ -11,14 +11,14 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
 /**
- * Enterprise decorator for PasswordEncoder implementing Defense-in-Depth.
- * Pre-hashes incoming plaintext passwords using HMAC-SHA256 with a system-wide pepper key,
- * completely mitigating the 72-byte BCrypt truncation vulnerability and protecting against offline DB dumps.
- * Package-private access modifier: restricted to internal security infrastructure.
+ * Wraps a {@link PasswordEncoder} with an HMAC-SHA256 server-side pepper before hashing,
+ * avoiding BCrypt's 72-byte truncation limit and strengthening stored password hashes.
  */
 class PepperedPasswordEncoder implements PasswordEncoder {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
+    private static final int MIN_PEPPER_LENGTH = 32;
+
     private final PasswordEncoder delegate;
     private final SecretKeySpec secretKeySpec;
 
@@ -27,8 +27,10 @@ class PepperedPasswordEncoder implements PasswordEncoder {
     }
 
     PepperedPasswordEncoder(String pepperKey, PasswordEncoder delegate) {
-        if (pepperKey == null || pepperKey.trim().length() < 32) {
-            throw new IllegalArgumentException("Pepper secret key must be at least 32 characters long for enterprise security.");
+        if (pepperKey == null || pepperKey.trim().length() < MIN_PEPPER_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Pepper secret key must be at least " + MIN_PEPPER_LENGTH + " characters long."
+            );
         }
         if (delegate == null) {
             throw new IllegalArgumentException("Delegate PasswordEncoder cannot be null.");
@@ -64,10 +66,6 @@ class PepperedPasswordEncoder implements PasswordEncoder {
         return delegate.upgradeEncoding(encodedPassword);
     }
 
-    /**
-     * Computes HMAC-SHA256 of the raw password using the pre-initialized secret key specification.
-     * Generates a fixed 32-byte digest represented as a Base64 string.
-     */
     private String applyHmac(CharSequence rawPassword) {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
