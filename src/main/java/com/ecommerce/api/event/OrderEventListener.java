@@ -12,8 +12,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Asynchronous event consumer decoupling secondary side effects (notifications, receipts, audit logs)
- * from the synchronous checkout database transaction.
+ * Asynchronously processes post-checkout side effects (notifications and audit logs) after transaction commit.
  */
 @Slf4j
 @Getter
@@ -32,7 +31,13 @@ public class OrderEventListener {
         this.lastProcessedEvent = event;
         this.processedEventCount.incrementAndGet();
 
-        log.info("Processing OrderPlacedEvent asynchronously on thread [{}]: trackingNumber={}, email={}, totalAmount={}", executionThreadName, event.trackingNumber(), event.customerEmail(), event.totalAmount());
+        log.info(
+                "Processing OrderPlacedEvent asynchronously on thread [{}]: trackingNumber={}, email={}, totalAmount={}",
+                executionThreadName,
+                event.trackingNumber(),
+                event.customerEmail(),
+                event.totalAmount()
+        );
 
         simulateEmailNotification(event);
         simulateAuditLogging(event);

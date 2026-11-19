@@ -8,7 +8,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * Evicts product cache entries after a category update commits, decoupling CategoryService from Product cache details.
+ * Evicts product cache entries after category updates commit, decoupling category changes from product caching.
  */
 @Slf4j
 @Component
