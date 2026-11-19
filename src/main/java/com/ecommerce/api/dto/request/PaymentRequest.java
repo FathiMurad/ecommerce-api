@@ -22,9 +22,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Payload sent by the client to charge an order.
- * Card fields are conditionally required for CREDIT_CARD and DEBIT_CARD methods,
- * while remaining optional for PAYPAL and CASH_ON_DELIVERY.
+ * Request payload for processing an order payment, including conditional card validation rules.
  */
 @Data
 @Builder
@@ -38,7 +36,11 @@ public class PaymentRequest {
     private PaymentMethod paymentMethod;
 
     @DecimalMin(value = "0.01", message = "Payment amount must be greater than zero")
-    @Digits(integer = MoneyConstants.PRECISION - MoneyConstants.SCALE, fraction = MoneyConstants.SCALE, message = "Payment amount format is invalid")
+    @Digits(
+            integer = MoneyConstants.PRECISION - MoneyConstants.SCALE,
+            fraction = MoneyConstants.SCALE,
+            message = "Payment amount format is invalid"
+    )
     private BigDecimal amount;
 
     @ToString.Exclude
@@ -61,7 +63,10 @@ public class PaymentRequest {
         if (paymentMethod != PaymentMethod.CREDIT_CARD && paymentMethod != PaymentMethod.DEBIT_CARD) {
             return true;
         }
-        return StringUtils.hasText(cardNumber) && StringUtils.hasText(cardHolderName) && StringUtils.hasText(expiryDate) && StringUtils.hasText(cvv);
+        return StringUtils.hasText(cardNumber)
+                && StringUtils.hasText(cardHolderName)
+                && StringUtils.hasText(expiryDate)
+                && StringUtils.hasText(cvv);
     }
 
     @JsonIgnore
@@ -70,6 +75,7 @@ public class PaymentRequest {
         if (cardNumber == null || !cardNumber.matches("^[0-9]{16}$")) {
             return true;
         }
+        // Allow test card suffixes ending in 0000 alongside standard Luhn-valid numbers
         return cardNumber.endsWith("0000") || passesLuhn(cardNumber);
     }
 

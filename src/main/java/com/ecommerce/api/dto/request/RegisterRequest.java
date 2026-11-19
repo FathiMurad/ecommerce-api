@@ -8,24 +8,21 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /**
- * Data Transfer Object representing a user registration request.
- * Contains the necessary validation rules and payload to register a new account.
+ * Request payload containing user details and credentials for new account registration.
  */
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@ToString(exclude = "password")
 public class RegisterRequest {
 
     public static final int RAW_PASSWORD_MIN_LENGTH = 8;
 
-    /**
-     * Maximum character length for raw user passwords.
-     * Capped at 72 to strictly align with BCrypt's internal 72-byte truncation limit,
-     * preventing silent password truncation security flaws and long-string hashing DoS attacks.
-     */
+    // Capped at 72 characters to align with BCrypt's 72-byte input limit and prevent truncation or hashing DoS
     public static final int RAW_PASSWORD_MAX_LENGTH = 72;
 
     @NotBlank(message = "First name is required")
@@ -41,11 +38,11 @@ public class RegisterRequest {
     @Size(max = User.EMAIL_MAX_LENGTH, message = "Email must not exceed {max} characters")
     private String email;
 
-    /**
-     * The raw plaintext password for the new account.
-     * Enforces minimum length and complies with BCrypt's 72-byte limit.
-     */
     @NotBlank(message = "Password is required")
-    @Size(min = RAW_PASSWORD_MIN_LENGTH, max = RAW_PASSWORD_MAX_LENGTH, message = "Password must be between {min} and {max} characters")
+    @Size(
+            min = RAW_PASSWORD_MIN_LENGTH,
+            max = RAW_PASSWORD_MAX_LENGTH,
+            message = "Password must be between {min} and {max} characters"
+    )
     private String password;
 }

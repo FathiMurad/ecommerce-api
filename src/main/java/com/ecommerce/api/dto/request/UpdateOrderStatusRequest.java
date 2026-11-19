@@ -8,7 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Request payload for administrative order status transitions.
+ * Request payload for administrative order status updates.
  */
 @Data
 @Builder

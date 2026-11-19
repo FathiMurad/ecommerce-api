@@ -34,7 +34,11 @@ public class ProductRequest {
 
     @NotNull(message = "Price is mandatory")
     @DecimalMin(value = "0.01", message = "Price must be strictly positive")
-    @Digits(integer = MoneyConstants.PRECISION - MoneyConstants.SCALE, fraction = MoneyConstants.SCALE, message = "Price cannot exceed 10 integer digits and 2 decimal places")
+    @Digits(
+            integer = MoneyConstants.PRECISION - MoneyConstants.SCALE,
+            fraction = MoneyConstants.SCALE,
+            message = "Price cannot exceed 10 integer digits and 2 decimal places"
+    )
     private BigDecimal price;
 
     @NotNull(message = "Stock quantity is mandatory")
