@@ -23,10 +23,16 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Immutable historical record of a purchased product line item capturing price snapshot at checkout time.
+ * JPA entity representing a purchased product line item with a price snapshot captured at checkout.
  */
 @Entity
-@Table(name = "order_items", indexes = {@Index(name = "idx_order_item_order", columnList = "order_id"), @Index(name = "idx_order_item_product", columnList = "product_id")})
+@Table(
+        name = "order_items",
+        indexes = {
+                @Index(name = "idx_order_item_order", columnList = "order_id"),
+                @Index(name = "idx_order_item_product", columnList = "product_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

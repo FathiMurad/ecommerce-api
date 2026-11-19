@@ -24,10 +24,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Line item entry associating a specific product and requested quantity within an active shopping cart.
+ * JPA entity representing a line item associating a product and quantity within a shopping cart.
  */
 @Entity
-@Table(name = "cart_items", uniqueConstraints = {@UniqueConstraint(name = "uk_cart_item_cart_product", columnNames = {"cart_id", "product_id"})}, indexes = {@Index(name = "idx_cart_item_product", columnList = "product_id")})
+@Table(
+        name = "cart_items",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_cart_item_cart_product", columnNames = {"cart_id", "product_id"})
+        },
+        indexes = {
+                @Index(name = "idx_cart_item_product", columnList = "product_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

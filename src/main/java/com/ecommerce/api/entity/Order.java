@@ -33,10 +33,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Represents a finalized purchase contract containing tracking details, snapshot addresses, and lifecycle state.
+ * JPA entity representing a customer purchase order, including tracking details, shipping snapshot, and lifecycle state.
  */
 @Entity
-@Table(name = "orders", indexes = {@Index(name = "idx_order_customer_email", columnList = "customer_email"), @Index(name = "idx_order_user_id", columnList = "user_id"), @Index(name = "idx_order_status", columnList = "status")})
+@Table(
+        name = "orders",
+        indexes = {
+                @Index(name = "idx_order_customer_email", columnList = "customer_email"),
+                @Index(name = "idx_order_user_id", columnList = "user_id"),
+                @Index(name = "idx_order_status", columnList = "status")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

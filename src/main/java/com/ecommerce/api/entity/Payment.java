@@ -29,10 +29,15 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Transaction processing record capturing gateway authorization, settlement method, and failure diagnostics.
+ * JPA entity representing a payment transaction record, including gateway status, settlement method, and failure details.
  */
 @Entity
-@Table(name = "payments", indexes = {@Index(name = "idx_payment_status", columnList = "status")})
+@Table(
+        name = "payments",
+        indexes = {
+                @Index(name = "idx_payment_status", columnList = "status")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

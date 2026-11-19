@@ -22,7 +22,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * System identity entity representing customers and administrators with RBAC credentials and profile state.
+ * JPA entity representing a registered user account with credentials, profile details, and role-based access control.
  */
 @Entity
 @Table(name = "users")

@@ -27,10 +27,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Core catalog entity representing an item available for purchase, inventory tracking, and pricing.
+ * JPA entity representing a catalog product with pricing, inventory tracking, and gallery images.
  */
 @Entity
-@Table(name = "products", indexes = {@Index(name = "idx_product_category", columnList = "category_id")})
+@Table(
+        name = "products",
+        indexes = {
+                @Index(name = "idx_product_category", columnList = "category_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

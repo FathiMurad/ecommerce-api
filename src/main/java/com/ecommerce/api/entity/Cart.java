@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Transient shopping session holder supporting authenticated users and anonymous guest token workflows.
+ * JPA entity representing a shopping cart session for authenticated users and anonymous guests.
  */
 @Entity
 @Table(name = "carts", indexes = {@Index(name = "idx_cart_user_id", columnList = "user_id")})

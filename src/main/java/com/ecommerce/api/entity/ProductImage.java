@@ -18,10 +18,15 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Gallery media asset associated with a catalog product, maintaining ordering and primary display flags.
+ * JPA entity representing a product gallery image with display ordering and primary image designation.
  */
 @Entity
-@Table(name = "product_images", indexes = {@Index(name = "idx_product_image_product", columnList = "product_id")})
+@Table(
+        name = "product_images",
+        indexes = {
+                @Index(name = "idx_product_image_product", columnList = "product_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

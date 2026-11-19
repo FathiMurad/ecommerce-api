@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Represents a hierarchical product category within the catalog hierarchy.
+ * JPA entity representing a product category within the catalog.
  */
 @Entity
 @Table(name = "categories")
