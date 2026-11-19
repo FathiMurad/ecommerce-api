@@ -10,13 +10,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Read-only projection representing complete cart details and financial totals.
+ * Response payload representing complete shopping cart details, items, and financial totals.
  */
-public record CartResponse(Long id, String cartToken, List<CartItemResponse> items, BigDecimal totalAmount,
-                           int totalItems) {
+public record CartResponse(
+        Long id,
+        String cartToken,
+        List<CartItemResponse> items,
+        BigDecimal totalAmount,
+        int totalItems
+) {
 
     public static CartResponse empty() {
-        return new CartResponse(null, null, List.of(), BigDecimal.ZERO.setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP), 0);
+        return new CartResponse(
+                null,
+                null,
+                List.of(),
+                BigDecimal.ZERO.setScale(MoneyConstants.SCALE, RoundingMode.HALF_UP),
+                0
+        );
     }
 
     public static CartResponse fromEntity(Cart cart) {
@@ -32,6 +43,12 @@ public record CartResponse(Long id, String cartToken, List<CartItemResponse> ite
             }
         }
 
-        return new CartResponse(cart.getId(), cart.getCartToken(), itemResponses, cart.calculateTotalAmount(), itemCount);
+        return new CartResponse(
+                cart.getId(),
+                cart.getCartToken(),
+                itemResponses,
+                cart.calculateTotalAmount(),
+                itemCount
+        );
     }
 }

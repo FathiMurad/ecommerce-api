@@ -8,10 +8,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Read-only projection representing complete product details in API responses.
+ * Response payload representing complete catalog product details, category info, and images.
  */
-public record ProductResponse(Long id, String name, String description, BigDecimal price, Integer stockQuantity,
-                              Long categoryId, String categoryName, List<ProductImageResponse> images) {
+public record ProductResponse(
+        Long id,
+        String name,
+        String description,
+        BigDecimal price,
+        Integer stockQuantity,
+        Long categoryId,
+        String categoryName,
+        List<ProductImageResponse> images
+) {
     public static ProductResponse fromEntity(Product product) {
         List<ProductImageResponse> imageResponses = new ArrayList<>();
 
@@ -28,6 +36,15 @@ public record ProductResponse(Long id, String name, String description, BigDecim
             categoryName = product.getCategory().getName();
         }
 
-        return new ProductResponse(product.getId(), product.getName(), product.getDescription(), product.getPrice(), product.getStockQuantity(), categoryId, categoryName, imageResponses);
+        return new ProductResponse(
+                product.getId(),
+                product.getName(),
+                product.getDescription(),
+                product.getPrice(),
+                product.getStockQuantity(),
+                categoryId,
+                categoryName,
+                imageResponses
+        );
     }
 }

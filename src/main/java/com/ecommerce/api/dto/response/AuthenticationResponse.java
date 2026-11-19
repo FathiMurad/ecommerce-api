@@ -6,8 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Data Transfer Object representing the response after successful authentication.
- * Contains the generated JWT token to be used for subsequent secured HTTP requests.
+ * Response payload containing the JWT issued upon successful authentication.
  */
 @Data
 @Builder
@@ -15,8 +14,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class AuthenticationResponse {
 
-    /**
-     * The JSON Web Token (JWT) issued to the authenticated user.
-     */
     private String token;
 }

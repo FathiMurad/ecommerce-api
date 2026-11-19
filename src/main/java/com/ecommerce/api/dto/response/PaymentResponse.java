@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Response DTO returned after transaction execution.
+ * Response payload representing the outcome and metadata of a payment transaction.
  */
 @Data
 @Builder
@@ -30,6 +30,15 @@ public class PaymentResponse {
     private LocalDateTime timestamp;
 
     public static PaymentResponse fromEntity(Payment payment) {
-        return PaymentResponse.builder().paymentId(payment.getId()).transactionId(payment.getTransactionId()).orderTrackingNumber(payment.getOrder().getTrackingNumber()).amount(payment.getAmount()).status(payment.getStatus()).paymentMethod(payment.getPaymentMethod()).failureReason(payment.getFailureReason()).timestamp(payment.getCreatedAt()).build();
+        return PaymentResponse.builder()
+                .paymentId(payment.getId())
+                .transactionId(payment.getTransactionId())
+                .orderTrackingNumber(payment.getOrder().getTrackingNumber())
+                .amount(payment.getAmount())
+                .status(payment.getStatus())
+                .paymentMethod(payment.getPaymentMethod())
+                .failureReason(payment.getFailureReason())
+                .timestamp(payment.getCreatedAt())
+                .build();
     }
 }

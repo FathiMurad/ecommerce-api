@@ -10,11 +10,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Read-only projection representing a full customer order.
+ * Response payload representing a complete customer order and its purchased line items.
  */
-public record OrderResponse(Long id, String trackingNumber, String customerName, String customerEmail,
-                            String shippingAddress, OrderStatus status, BigDecimal totalAmount,
-                            List<OrderItemResponse> items, LocalDateTime createdAt) {
+public record OrderResponse(
+        Long id,
+        String trackingNumber,
+        String customerName,
+        String customerEmail,
+        String shippingAddress,
+        OrderStatus status,
+        BigDecimal totalAmount,
+        List<OrderItemResponse> items,
+        LocalDateTime createdAt
+) {
     public static OrderResponse fromEntity(Order order) {
         List<OrderItemResponse> itemResponses = new ArrayList<>();
 
@@ -24,6 +32,16 @@ public record OrderResponse(Long id, String trackingNumber, String customerName,
             }
         }
 
-        return new OrderResponse(order.getId(), order.getTrackingNumber(), order.getCustomerName(), order.getCustomerEmail(), order.getShippingAddress(), order.getStatus(), order.getTotalAmount(), itemResponses, order.getCreatedAt());
+        return new OrderResponse(
+                order.getId(),
+                order.getTrackingNumber(),
+                order.getCustomerName(),
+                order.getCustomerEmail(),
+                order.getShippingAddress(),
+                order.getStatus(),
+                order.getTotalAmount(),
+                itemResponses,
+                order.getCreatedAt()
+        );
     }
 }
