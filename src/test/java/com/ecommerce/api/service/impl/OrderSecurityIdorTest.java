@@ -21,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Unit tests verifying IDOR prevention and role-based access enforcement on order retrieval.
+ */
 @ExtendWith(MockitoExtension.class)
 class OrderSecurityIdorTest {
 
@@ -37,14 +40,30 @@ class OrderSecurityIdorTest {
     @DisplayName("User B must receive 404 (ResourceNotFoundException) when accessing User A's order to prevent IDOR oracle")
     void shouldThrowNotFoundWhenUserAccessesAnotherUsersOrder() {
         String trackingNumber = "ORD-TEST123456";
-        User owner = User.builder().id(1L).email("owner@test.com").role(Role.ROLE_CUSTOMER).build();
-        User attacker = User.builder().id(2L).email("attacker@test.com").role(Role.ROLE_CUSTOMER).build();
+        User owner = User.builder()
+                .id(1L)
+                .email("owner@test.com")
+                .role(Role.ROLE_CUSTOMER)
+                .build();
+        User attacker = User.builder()
+                .id(2L)
+                .email("attacker@test.com")
+                .role(Role.ROLE_CUSTOMER)
+                .build();
 
-        Order order = Order.builder().id(10L).trackingNumber(trackingNumber).user(owner).items(new ArrayList<>()).build();
+        Order order = Order.builder()
+                .id(10L)
+                .trackingNumber(trackingNumber)
+                .user(owner)
+                .items(new ArrayList<>())
+                .build();
 
         when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(order);
 
-        assertThrows(ResourceNotFoundException.class, () -> orderService.getOrderByTrackingNumber(trackingNumber, attacker));
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> orderService.getOrderByTrackingNumber(trackingNumber, attacker)
+        );
 
         verify(orderAccessPolicy).assertCanAccess(order, attacker);
     }
@@ -53,10 +72,23 @@ class OrderSecurityIdorTest {
     @DisplayName("Admin must be allowed to access any user's order")
     void shouldAllowAdminToAccessAnyOrder() {
         String trackingNumber = "ORD-TEST123456";
-        User owner = User.builder().id(1L).email("owner@test.com").role(Role.ROLE_CUSTOMER).build();
-        User admin = User.builder().id(99L).email("admin@test.com").role(Role.ROLE_ADMIN).build();
+        User owner = User.builder()
+                .id(1L)
+                .email("owner@test.com")
+                .role(Role.ROLE_CUSTOMER)
+                .build();
+        User admin = User.builder()
+                .id(99L)
+                .email("admin@test.com")
+                .role(Role.ROLE_ADMIN)
+                .build();
 
-        Order order = Order.builder().id(10L).trackingNumber(trackingNumber).user(owner).items(new ArrayList<>()).build();
+        Order order = Order.builder()
+                .id(10L)
+                .trackingNumber(trackingNumber)
+                .user(owner)
+                .items(new ArrayList<>())
+                .build();
 
         when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(order);
 
@@ -68,7 +100,12 @@ class OrderSecurityIdorTest {
     @DisplayName("Guest should be allowed to access guest order via tracking number")
     void shouldAllowAccessToGuestOrder() {
         String trackingNumber = "ORD-GUEST12345";
-        Order guestOrder = Order.builder().id(11L).trackingNumber(trackingNumber).user(null).items(new ArrayList<>()).build();
+        Order guestOrder = Order.builder()
+                .id(11L)
+                .trackingNumber(trackingNumber)
+                .user(null)
+                .items(new ArrayList<>())
+                .build();
 
         when(orderRepository.getByTrackingNumberOrThrow(trackingNumber)).thenReturn(guestOrder);
 
