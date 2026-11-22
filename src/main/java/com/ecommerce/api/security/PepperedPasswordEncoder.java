@@ -73,7 +73,7 @@ class PepperedPasswordEncoder implements PasswordEncoder {
             byte[] rawHmac = mac.doFinal(rawPassword.toString().getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(rawHmac);
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-            throw new IllegalStateException("Cryptographic failure while calculating password HMAC-SHA256", e);
+            throw new IllegalStateException("Cryptographic failure while calculating password " + HMAC_ALGORITHM, e);
         }
     }
 }
