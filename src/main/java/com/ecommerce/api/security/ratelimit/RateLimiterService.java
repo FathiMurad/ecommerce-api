@@ -114,19 +114,24 @@ public class RateLimiterService {
 
         String stateKey = normalizedEmail + ":" + clientIp;
         // Atomic compute ensures thread-safe counter increments under concurrent login attempts
-        loginFailuresByEmailIp.asMap().compute(stateKey, (key, existing) -> {
-            Instant now = Instant.now();
-            if (existing == null || (existing.lockedUntil() != null && !now.isBefore(existing.lockedUntil()))) {
-                return new LoginFailureState(1, null);
-            }
+        loginFailuresByEmailIp.asMap().compute(stateKey, (key, existing) -> nextFailureState(existing));
+    }
 
-            int count = existing.failures() + 1;
-            Instant lockUntil = null;
-            if (count >= MAX_LOGIN_FAILURES_PER_EMAIL_IP) {
-                lockUntil = existing.lockedUntil() != null ? existing.lockedUntil() : now.plus(EMAIL_IP_LOCKOUT_DURATION);
-            }
-            return new LoginFailureState(count, lockUntil);
-        });
+    private LoginFailureState nextFailureState(LoginFailureState existing) {
+        Instant now = Instant.now();
+        if (existing == null || isLockExpired(existing, now)) {
+            return new LoginFailureState(1, null);
+        }
+
+        int newFailures = existing.failures() + 1;
+        Instant lockUntil = (newFailures >= MAX_LOGIN_FAILURES_PER_EMAIL_IP)
+                ? now.plus(EMAIL_IP_LOCKOUT_DURATION)
+                : null;
+        return new LoginFailureState(newFailures, lockUntil);
+    }
+
+    private boolean isLockExpired(LoginFailureState state, Instant now) {
+        return state.lockedUntil() != null && !now.isBefore(state.lockedUntil());
     }
 
     public void clearFailedLogins(String normalizedEmail, String clientIp) {
